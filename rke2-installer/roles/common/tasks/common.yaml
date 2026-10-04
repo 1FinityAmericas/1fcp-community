@@ -1,0 +1,48 @@
+---
+- name: cleanup of fnc registry from /etc/hosts
+  become: yes
+  shell: 'sed -i "/fnc-docker-reg\$/d" /etc/hosts'
+  ignore_errors: yes
+
+- name: adding custom registry DNS fnc-docker-reg to /etc/hosts file
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: present
+    insertafter: EOF
+    #line: "{{ backup_apps_registry.host_ip }} {{ backup_apps_registry.host_name }}"
+    line: "{{ hostvars[groups['nfsserver'][0]].ip }} {{ext_doc_reg_dns}}"
+
+- name: '[Publish TLS] Prepare folder /etc/rancher/rke2 '
+  become: yes
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+
+- name: '[Publish TLS] Copying all TLS collected files to node-path:/etc/rancher/rke2/ '
+  become: yes
+  copy:
+    src: files/
+    dest: /etc/rancher/rke2/
+
+- name: '[Trust CA] Trusing the rootCA.crt on OLinux/CentOS/RHEL/Ubuntu folders'
+  become: yes
+  shell: |
+    if [ -d "/etc/pki/ca-trust/source/anchors/" ]
+    then
+        cp /etc/rancher/rke2/rootCA.crt  /etc/pki/ca-trust/source/anchors/
+        update-ca-trust extract
+        echo "OLinux/RHEL/CentOS detected & updated trust!"
+    fi
+    #Only for Ubuntu VMs, update the CA Trust
+    if [ -d "/usr/local/share/ca-certificates/" ]
+    then
+        cp /etc/rancher/rke2/rootCA.crt  /usr/local/share/ca-certificates/
+        update-ca-certificates
+        echo "Ubuntu detected & updated trust!"
+    fi
+  ignore_errors: false
+  register: results
+
+- debug:
+    var: results.stdout

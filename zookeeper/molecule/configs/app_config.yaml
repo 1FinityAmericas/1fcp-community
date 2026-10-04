@@ -1,0 +1,64 @@
+zookeeper:
+  app_name: zookeeper
+  namespace: ndl
+  cluster:
+    replicaCount: 3
+    quorum_size: 2
+
+  image:
+    repository: zookeeper
+    tag: 7.9.2
+    enabled: true
+    pullPolicy: IfNotPresent
+
+  podManagementPolicy: OrderedReady
+
+  updateStrategy: RollingUpdate
+
+  securityContext: 
+    runAsUser: 1000
+    runAsGroup: 1000
+
+  securityGroup:
+    fsGroup: 1000
+  
+  tickTime: 2000
+  syncLimit: 5
+  initLimit: 10
+  maxClientCnxns: 60
+  autoPurgeSnapRetainCount: 3
+  autoPurgePurgeInterval: 24
+
+  heapOptions: "-Xms2G -Xmx2G"
+
+  serverPort: 2888
+  leaderElectionPort: 3888
+  clientPort: 2181
+
+  persistence:
+    enabled: true
+    storageClass: rancher-dynamic-local-path
+    dataDirSize: 5Gi
+    dataLogDirSize: 5Gi
+
+  resources: 
+    limits:
+      cpu: 3
+      memory: 5Gi
+    requests:
+      cpu: 2
+      memory: 2Gi
+
+  jmx:
+    port: 5555
+  prometheus:
+    image:
+      repository: kafka-prometheus-jmx-exporter
+      tag: v2
+      enabled: false
+      pullPolicy: IfNotPresent
+    port: 5556
+external_registry:
+  auth: false
+  username: automation
+  password: automation

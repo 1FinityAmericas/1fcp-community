@@ -1,0 +1,492 @@
+---
+# Tasks for setting up the first server node and the rest of the server nodes
+
+- name: Get RKE2 tar ball folder name
+  shell: "echo {{ rke2_server_ver  }} | sed 's/v//' | sed 's/+/-/'"
+  register: version
+
+- name: copy the rke2 artifacts to node's home path
+  copy:
+    src: "{{ playbook_dir }}/apps/images/rke2-{{ version.stdout }}/rke2-artifacts.tar"
+    dest: "{{ ansible_env.HOME }}"
+
+- name: Unarchive artifacts in the node's home path
+  unarchive:
+    src: "{{ ansible_env.HOME }}/rke2-artifacts.tar"
+    dest: "{{ ansible_env.HOME }}"
+    remote_src: yes
+
+- name: Creates agent images path if does not exist
+  become: yes
+  file:
+    path: /var/lib/rancher/rke2/agent/images/
+    state: directory
+
+- name: copy the calico image artifacts to node's home path
+  become: yes
+  copy:
+    src: "{{ ansible_env.HOME }}/rke2-artifacts/rke2-images-calico.linux-amd64.tar.gz"
+    dest: /var/lib/rancher/rke2/agent/images/
+    remote_src: yes
+
+- name: copy the core image artifacts to node's home path
+  become: yes
+  copy:
+    src: "{{ ansible_env.HOME }}/rke2-artifacts/rke2-images-core.linux-amd64.tar.gz"
+    dest: /var/lib/rancher/rke2/agent/images/
+    remote_src: yes
+
+- name: run install.sh shell script
+  become: yes
+  shell: "INSTALL_RKE2_ARTIFACT_PATH={{ ansible_env.HOME }}/rke2-artifacts sh {{ ansible_env.HOME }}/rke2-artifacts/install.sh"
+
+- name: Update expiration days in the rke2 server environment file
+  become: yes
+  lineinfile:
+    path: /usr/local/lib/systemd/system/rke2-server.env
+    state: present
+    insertafter: EOF
+    line: "CATTLE_NEW_SIGNED_CERT_EXPIRATION_DAYS={{ cert_expiry_duration.days }}"
+  when: cert_expiry_duration.enable
+
+- name: Create rke2 path
+  become: yes
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+
+#------------------------------ Start: copying nginx-ingress-LB override setting hostNetwork 'false' to path created here upfront ---------------------------
+- name: Backup the YAML file
+  delegate_to: localhost
+  copy:
+    src: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml'
+    dest: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+
+- name: Write node IPs into nginx-ingress override file
+  delegate_to: localhost
+  lineinfile:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    insertafter: 'externalIPs:'  # regex to find the line containing the array-list group externalIPs below which we define the configurations.
+    line: "          - {{  hostvars[item]['ip'] }}"
+  with_items:
+    - "{{ groups['kubemasters'] }}"
+
+- name: Write VIP into nginx-ingress override file if enabled
+  delegate_to: localhost
+  lineinfile:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    insertafter: 'externalIPs:'  # regex to find the line containing the array-list group externalIPs below which we define the configurations.
+    line: '          - {{ ha_rke2_vip_address }}'
+  when: "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- name: pre-creating the path upto rke2 server manifests
+  become: yes
+  delegate_to: "{{ item }}"
+  file:
+    path: /var/lib/rancher/rke2/server/manifests/
+    state: directory
+  with_items:
+    - "{{ groups['kubemasters'] }}"
+
+- name: copying the prepared nginx-ingress override config to the manifests path
+  become: yes
+  delegate_to: "{{ item }}"
+  copy:
+    src: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    dest: "/var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml"
+  with_items:
+    - "{{ groups['kubemasters'] }}"
+
+- name: Delete the backup file
+  delegate_to: localhost
+  file:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    state: absent
+
+#------------------------------ End of adding nginx-ingress-LB override setting ---------------------------
+- name: Adding dual stack RKE2 configuration1 for HA
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      write-kubeconfig-mode: "0644"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{ ha_rke2_vip_hostname }}"
+        - "{{ ha_rke2_vip_address }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-label:
+        - "nodetype=master"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16,2001:cafe:42:0::/56"
+      service-cidr: "10.43.0.0/16,2001:cafe:42:1::/112"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ ha_rke2_vip_hostname }}"
+      #cluster-domain: "{{ hostvars[groups['kubemasters'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx  
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]          
+    create: true
+  when: ha_rke2|bool == true and (hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual')
+
+- name: Adding dual stack RKE2 configuration1
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      write-kubeconfig-mode: "0644"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-label:
+        - "nodetype=master"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16,2001:cafe:42:0::/56"
+      service-cidr: "10.43.0.0/16,2001:cafe:42:1::/112"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]          
+    create: true
+  when: ha_rke2|bool != true and (hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual')
+
+- name: Adding single stack RKE2 configuration1 for HA
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      write-kubeconfig-mode: "0644"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{ ha_rke2_vip_hostname }}"
+        - "{{ ha_rke2_vip_address }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-label:
+        - "nodetype=master"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16"
+      service-cidr: "10.43.0.0/16"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ ha_rke2_vip_hostname }}"
+      #cluster-domain: "{{ hostvars[groups['kubemasters'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx          
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool == true and (hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single')
+
+- name: Adding single stack RKE2 configuration1
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      write-kubeconfig-mode: "0644"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-label:
+        - "nodetype=master"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16"
+      service-cidr: "10.43.0.0/16"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool != true and (hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single')
+
+
+- name: read the token
+  delegate_to: localhost
+  become: yes
+  shell: cat /var/lib/rancher/rke2/server/node-token
+  register: token
+  when: "{{ hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+- name: Adding dual stack RKE2 configuration2 for HA 
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{ ha_rke2_vip_hostname }}"
+        - "{{ ha_rke2_vip_address }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16,2001:cafe:42:0::/56"
+      service-cidr: "10.43.0.0/16,2001:cafe:42:1::/112"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ ha_rke2_vip_hostname }}"
+      #cluster-domain: "{{ hostvars[groups['kubemasters'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool == true and (hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual')
+
+- name: Adding dual stack RKE2 configuration2
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16,2001:cafe:42:0::/56"
+      service-cidr: "10.43.0.0/16,2001:cafe:42:1::/112"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool != true and (hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual')
+
+- name: Adding single stack RKE2 configuration2 for HA
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{ ha_rke2_vip_hostname }}"
+        - "{{ ha_rke2_vip_address }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16"
+      service-cidr: "10.43.0.0/16"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ ha_rke2_vip_hostname }}"
+      #cluster-domain: "{{ hostvars[groups['kubemasters'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool == true and (hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single')
+
+- name: Adding single stack RKE2 configuration2
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      tls-san:
+        - "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+        - "{{hostvars[inventory_hostname]['ip']}}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+      cluster-cidr: "10.42.0.0/16"
+      service-cidr: "10.43.0.0/16"
+      cluster-dns: "10.43.0.10"
+      cluster-domain: "{{ hostvars[groups['primary_master_node_group'][0]].host }}"
+      cni:
+        - calico
+      disable:
+        - rke2-canal
+        - rke2-kube-proxy
+        #- rke2-ingress-nginx
+      kube-apiserver-arg: ["--tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"]
+    create: true
+  when: ha_rke2|bool != true and (hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single')
+
+- name: Stop firewalld service
+  become: yes
+  systemd:
+    name: firewalld
+    state: stopped
+  ignore_errors: yes
+
+- name: Stop iptables service
+  become: yes
+  systemd:
+    name: iptables
+    state: stopped
+  ignore_errors: yes
+
+- name: Disable iptables service
+  become: yes
+  systemd:
+    name: iptables
+    enabled: no
+  ignore_errors: yes
+
+- name: Disable firewalld service
+  become: yes
+  systemd:
+    name: firewalld
+    enabled: no
+  ignore_errors: yes
+
+- name: Enable service rke2-server
+  become: yes
+  systemd:
+    name: rke2-server.service
+    enabled: yes
+
+- name : wait untill rke2-server service is enabled
+  become: yes
+  command: systemctl is-enabled rke2-server
+  register: rke2_enabled
+  until: rke2_enabled.stdout == "enabled"
+  retries: 6
+  delay: 10
+  changed_when: false
+
+- name: Ensure rke2-server.service is in a running state
+  become: yes
+  service:
+    name: rke2-server.service 
+    state: started
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10
+
+- debug:
+    msg: '{{ ansible_user }}'
+
+- name: copy crictl.yaml to enable container tooling (1/3) - crictl
+  become: yes
+  copy:
+    src: /var/lib/rancher/rke2/agent/etc/crictl.yaml
+    dest: /etc/crictl.yaml
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_group }}'
+    mode: u+x
+    remote_src: yes
+
+- name: Creates kube directory
+  file:
+    path: '{{ ansible_env.HOME }}/.kube'
+    state: directory
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_group }}'
+    mode: '0750'
+
+- name: copy rke2.yaml to kubeconfig default path
+  become: yes
+  copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: '{{ ansible_env.HOME }}/.kube/config'
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_group }}'
+    remote_src: yes
+    mode: '0640'
+
+- name: 'Update /etc/rancher/rke2/rke2.yaml file mode'
+  become: yes
+  shell: |
+    chmod  644 /etc/rancher/rke2/rke2.yaml
+  when: "{{ hostvars[inventory_hostname]['ip'] != hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+
+- name: Update bashrc with RKE2 paths
+  blockinfile:
+    dest: "~/.bashrc"
+    block: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export KUBECONFIG=~/.kube/config
+      export CRI_CONFIG_FILE=/etc/crictl.yaml
+      alias  k=kubectl
+    marker: '# {mark} Adding RKE2 binary paths'
+
+- name: Update bashrc with RKE2 paths
+  become: yes
+  blockinfile:
+    dest: "~/.bashrc"
+    block: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export KUBECONFIG=~/.kube/config
+      export CRI_CONFIG_FILE=/etc/crictl.yaml
+      alias  k=kubectl
+    marker: '# {mark} Adding RKE2 binary paths'
+
+- name: source bashrc after update
+  shell: "source ~/.bashrc && echo $KUBECONFIG"
+  args:
+     executable: /bin/bash
+
+- name: source bashrc after update
+  become: yes
+  shell: "source ~/.bashrc && echo $KUBECONFIG"
+  args:
+     executable: /bin/bash
+
+- name: Writing the node token to a variable
+  become: yes
+  shell: cat /var/lib/rancher/rke2/server/node-token
+  register: token
+  when: "{{ hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+- name: copy token to a file under inventory path
+  delegate_to: localhost
+  copy:
+    content: "{{ token.stdout }}"
+    dest: "{{ ansible_env.HOME }}/token.txt"
+  when: "{{ hostvars[inventory_hostname]['ip'] == hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+- name: Removing image tarballs
+  shell: " rm -rf {{ ansible_env.HOME }}/rke2-artifacts*"

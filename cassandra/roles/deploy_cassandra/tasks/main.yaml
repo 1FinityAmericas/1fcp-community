@@ -1,0 +1,5 @@
+#
+---
+
+- name: installing cassandra
+  import_tasks: deploy_cassandra.yaml

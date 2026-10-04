@@ -1,0 +1,269 @@
+{{- if .Capabilities.APIVersions.Has "apps/v1" }}
+apiVersion: apps/v1
+{{- else }}
+apiVersion: apps/v1beta1
+{{- end }}
+kind: StatefulSet
+metadata:
+  name: {{ template "zookeeper.fullname" . }}
+  labels:
+    app: {{ template "zookeeper.name" . }}
+    chart: {{ template "zookeeper.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  {{- if .Capabilities.APIVersions.Has "apps/v1" }}
+  selector:
+    matchLabels:
+      app: {{ template "zookeeper.name" . }}
+      release: {{ .Release.Name }}
+  {{- end }}
+  serviceName: {{ template "zookeeper.fullname" . }}-headless
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  replicas: {{ default 3 .Values.servers }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "zookeeper.name" . }}
+        release: {{ .Release.Name }}
+      {{- if or .Values.podAnnotations .Values.prometheus.jmx.enabled }}
+      annotations:
+      {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- if .Values.prometheus.jmx.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.prometheus.jmx.port | quote }}
+      {{- end }}
+      {{- end }}
+    spec:
+      affinity:
+      {{- if .Values.affinity }}
+{{ toYaml .Values.affinity | indent 8 }}
+      {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - {{ template "zookeeper.name" . }}
+                  - key: "release"
+                    operator: In
+                    values:
+                    - {{ .Release.Name }}
+              topologyKey: "kubernetes.io/hostname"
+      {{- end }}
+      {{- if .Values.securityContextEnabled }}
+      initContainers:
+      - name: chown
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+        command: 
+        - sh
+        - "-c"
+        - |
+          ZK_USER={{ .Values.securityContext.runAsUser }}
+          ZK_GROUP={{ .Values.securityContext.runAsGroup }}
+          cp -r /etc/kafka/* /temp/configs/
+          cp -r /etc/confluent/docker/* /temp/docker/
+          chown -R $ZK_USER:$ZK_GROUP /temp/configs /temp/docker /temp/log /home/appuser
+          chown -R $ZK_USER:$ZK_GROUP /var/lib/zookeeper
+          chown -R $ZK_USER:$ZK_GROUP /var/lib/zookeeper/data /var/lib/zookeeper/log
+          chmod -R 775 /var/lib/zookeeper /var/lib/zookeeper/data /var/lib/zookeeper/log
+        volumeMounts:
+        - name: kafka-conf
+          mountPath: /temp/configs
+        - name: docker-conf
+          mountPath: /temp/docker
+        - mountPath: /var/lib/zookeeper
+          name: zkbasepath
+        - mountPath: /var/lib/zookeeper/data
+          name: datadir
+          subPath: data
+        - mountPath: /var/lib/zookeeper/log
+          name: datalogdir  
+          subPath: log
+        - mountPath: /temp/log
+          name: jvmlog
+        - mountPath: /home/appuser
+          name: home  
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+      {{- end }}
+      containers:
+      {{- if .Values.prometheus.jmx.enabled }}
+      - name: prometheus-jmx-exporter
+        image: "{{ .Values.image.registry }}/{{ .Values.prometheus.jmx.image.repository }}:{{ .Values.prometheus.jmx.image.tag }}"
+        imagePullPolicy: "{{ .Values.prometheus.jmx.image.pullPolicy }}"
+        command:
+        - java
+        - -XX:+UnlockExperimentalVMOptions
+        - -XX:+UseCGroupMemoryLimitForHeap
+        - -XX:MaxRAMFraction=1
+        - -XshowSettings:vm
+        - -jar
+        - jmx_prometheus_httpserver.jar
+        - {{ .Values.prometheus.jmx.port | quote }}
+        - /etc/jmx-zookeeper/jmx-zookeeper-prometheus.yml
+        ports:
+        - containerPort: {{ .Values.prometheus.jmx.port }}
+        resources:
+{{ toYaml .Values.prometheus.jmx.resources | indent 10 }}
+        volumeMounts:
+        - name: jmx-config
+          mountPath: /etc/jmx-zookeeper
+      {{- end }}
+      - name: {{ template "zookeeper.name" . }}-server
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+        {{- if .Values.securityContextEnabled }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        ports:
+        - containerPort: {{ .Values.clientPort }}
+          name: client
+        - containerPort: {{ .Values.serverPort }}
+          name: server
+        - containerPort: {{ .Values.leaderElectionPort }}
+          name: leader-election
+        {{- if .Values.prometheus.jmx.enabled }}
+        - containerPort: {{ .Values.jmx.port }}
+          name: jmx
+        {{- end }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        env:
+        - name : KAFKA_HEAP_OPTS
+          value: "{{ .Values.heapOptions }}"
+        {{- if .Values.jmx.port }}
+        - name : KAFKA_JMX_PORT
+          value: "{{ .Values.jmx.port }}"
+        {{- end }}
+        - name : ZOOKEEPER_TICK_TIME
+          value: "{{ .Values.tickTime }}"
+        - name : ZOOKEEPER_SYNC_LIMIT
+          value: "{{ .Values.syncLimit }}"
+        - name : ZOOKEEPER_INIT_LIMIT
+          value: "{{ .Values.initLimit }}"
+        - name : ZOOKEEPER_MAX_CLIENT_CNXNS
+          value: "{{ .Values.maxClientCnxns }}"
+        - name : ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT
+          value: "{{ .Values.autoPurgeSnapRetainCount}}"
+        - name : ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL
+          value: "{{ .Values.autoPurgePurgeInterval}}"
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "{{ .Values.clientPort }}"
+        - name : ZOOKEEPER_SERVERS
+          value: {{ template "zookeeper.serverlist" . }}
+        # ZOOKEEPER_SERVER_ID is required just to pass zookeeper ensure script for env check,
+        # the value(metadata.mame) is not used and will be overwritten in command part
+        - name: ZOOKEEPER_SERVER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        command:
+        - "bash"
+        - "-c"
+        - |
+          ZK_FIX_HOST_REGEX="s/${HOSTNAME}\.[^:]*:/0.0.0.0:/g"
+          ZOOKEEPER_SERVER_ID=$((${HOSTNAME##*-}+1)) \
+          ZOOKEEPER_SERVERS=`echo $ZOOKEEPER_SERVERS | sed -e "$ZK_FIX_HOST_REGEX"` \
+          /etc/confluent/docker/run
+        volumeMounts:
+        {{- if .Values.securityContextEnabled }}
+        - name: datadir
+          mountPath: /var/lib/zookeeper/data
+          subPath: data
+        - name: datalogdir
+          mountPath: /var/lib/zookeeper/log
+          subPath: log
+        - name: kafka-conf
+          mountPath: /etc/kafka
+        - name: docker-conf
+          mountPath: /etc/confluent/docker
+        - mountPath: /var/lib/zookeeper
+          name: zkbasepath
+        - mountPath: /var/log/kafka
+          name: jvmlog 
+        - mountPath: /home/appuser
+          name: home
+        {{- else }}
+        - name: datadir
+          mountPath: /var/lib/zookeeper/data
+        - name: datalogdir
+          mountPath: /var/lib/zookeeper/log
+        {{- end }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      {{- if .Values.securityContextEnabled }}
+      securityContext:
+        fsGroup: {{ .Values.securityGroup.fsGroup }}
+      {{- end }}
+      volumes:
+      {{- if .Values.securityContextEnabled }}
+      - name: kafka-conf
+        emptyDir: {}
+      - name: docker-conf
+        emptyDir: {}
+      - name: zkbasepath
+        emptyDir: {}
+      - name: jvmlog 
+        emptyDir: {}
+      - name: home
+        emptyDir: {}
+      {{- end }}
+      {{ if not .Values.persistence.enabled }}
+      - name: datadir
+        emptyDir: {}
+      - name: datalogdir
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.prometheus.jmx.enabled }}
+      - name: jmx-config
+        configMap:
+          name: {{ template "zookeeper.fullname" . }}-jmx-configmap
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.dataDirSize }}"
+      {{- if .Values.persistence.dataDirStorageClass }}
+      {{- if (eq "-" .Values.persistence.dataDirStorageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.persistence.dataDirStorageClass }}"
+      {{- end }}
+      {{- else }}
+      storageClassName: {{ .Values.persistence.storageClass }}
+      {{- end }}
+  - metadata:
+      name: datalogdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.dataLogDirSize }}"
+      storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}

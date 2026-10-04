@@ -1,0 +1,24 @@
+# Restart all masters first (primary + secondary groups)
+- hosts: kubemasters
+  become: yes
+  serial: 1
+  gather_facts: false
+  
+  vars:
+    rke2_service_name: rke2-server.service
+
+  roles:
+    - cluster_restart
+
+# Restart all workers - 10 workers asynchronously for >10 workers
+- hosts: kubeworkers
+  become: yes
+  serial: 10
+  gather_facts: false
+
+  vars:
+    rke2_service_name: rke2-agent.service  
+
+  roles:
+    - cluster_restart
+

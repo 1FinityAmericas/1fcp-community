@@ -1,0 +1,19 @@
+---
+# Tasks for disabling the scheduling on server nodes
+#
+- name: "running node taint on master nodes"
+  shell: 'kubectl taint nodes {{ hostvars[item]["host"] }} node-role.kubernetes.io/control-plane=:NoSchedule --overwrite'
+  with_items: "{{ groups['kubemasters'] }}"
+
+- name: patch the master nodes
+  shell: 'kubectl patch node {{ hostvars[item]["host"] }} -p "{\"spec\":{\"unschedulable\":true}}"'
+  with_items: "{{ groups['kubemasters'] }}"
+
+- name: cordon the master nodes
+  shell: 'kubectl cordon {{ hostvars[item]["host"] }}'
+  with_items: "{{ groups['kubemasters'] }}"
+
+  #- name: running node un-taint on worker nodes
+  #  shell: 'kubectl taint node {{ hostvars[item]["host"] }} node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule-'
+  #  with_items: "{{ groups['kubeworkers'] }}"
+  #  ignore_errors: yes

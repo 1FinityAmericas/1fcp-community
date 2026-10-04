@@ -1,0 +1,6 @@
+---
+#
+- hosts: kubenodes
+
+  roles:
+    - remove_specific_node_dns

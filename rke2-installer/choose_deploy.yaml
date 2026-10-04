@@ -1,0 +1,158 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - Please execute the deployment script with one of the following options:
+          -   -t rke2                       : Install RKE2 base in the cluster
+          -   -t vm-time-status             : Time and Zone Verify across cluster node
+          -   -t add-node                   : Add an additional agent node to the cluster
+          -   -t delete-node                : Delete an existing specific agent node
+          -   -t rke2-remove                : Uninstall RKE2 base ( only for rke2 installed with 'rke2' tag)
+          -   -t azure-vip-fix              : Fix azure kube vip issue
+          -   -t remove-azure-vip-fix       : Remove  azure kube vip cron job
+          -   -t vip                        : Install kube-vip when enabled
+          -   -t vip-remove                 : Remove kube-vip from master node when enabled
+          -   -t configure-kubelet-master   : Apply Kubelet configurations to master nodes
+          -   -t configure-kubelet-worker   : Apply Kubelet configurations to worker nodes
+          -   -t kubelet-swap-enable        : Enable swap configurations on worker nodes
+          -   -t kubelet-swap-disable       : Disable swap configurations on worker nodes
+      tags: help
+      run_once: true
+
+#---------------------Host updates--------------------------
+- import_playbook: update_dns.yaml
+  tags: [never, rke2, add-node]
+
+- import_playbook: change_hostname.yaml
+  tags: [never, rke2, add-node]
+
+- import_playbook: app_config.yaml
+  tags: [never, rke2, add-node, delete-node, vip, vip-remove, rke2-remove, azure-vip-fix, remove-azure-vip-fix, configure-kubelet-master, configure-kubelet-worker, kubelet-swap-enable, kubelet-swap-disable, local-reg]
+
+- import_playbook: dependency.yaml
+  tags: [never, rke2]
+
+  
+#--- setup RKE2 control-plane (masters)----------------------------
+  #deploy registry certs to all nodes
+- import_playbook: deploy_reg_certs.yaml
+  tags: [never, rke2, local-reg]
+
+- import_playbook: create_rke2_certs.yaml
+  tags: [never, rke2]
+      
+- import_playbook: launch_first_server_node.yaml
+  tags: [never, rke2]
+
+- import_playbook: launch_server_nodes.yaml
+  tags: [never, rke2]
+  when:
+    - "{{ groups['kubemasters'] | length }} == 3"
+
+- import_playbook: add_registry_new_nodes.yaml
+  tags: [never, add-node]
+  #when: "hostvars[groups['primary_master_node_group'][0]].ext_docker_registry|bool == true"
+
+- import_playbook: add_master_node.yaml
+  tags: [never, add-node]
+
+- import_playbook: remove_azure_vip_fix.yaml
+  tags: [never, azure-vip-fix, rke2-remove, vip, remove-azure-vip-fix, vip-remove]
+  when: "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- import_playbook: remove_vip.yaml
+  tags: [never, rke2-remove, vip-remove, vip]
+  when: "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- import_playbook: install_kubevip.yaml
+  tags: [never, rke2, vip, add-node]
+  when:
+    - "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- import_playbook: azure_vip_fix.yaml
+  tags: [never, azure-vip-fix, rke2, vip]
+  when:
+    - "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- import_playbook: verify_kubevip.yaml
+  tags: [never, rke2, vip]
+  when:
+    - "hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+  #------------------------------------------------------------------
+
+- import_playbook: launch_agent_nodes.yaml
+  tags: [never, rke2]
+
+- import_playbook: kubelet_config.yaml
+  tags: [never, configure-kubelet-master, configure-kubelet-worker]
+
+- import_playbook: kubelet-swap-enable.yaml
+  tags: [never, kubelet-swap-enable]
+
+- import_playbook: check_rke2_pod_status.yaml
+  tags: [never, rke2]
+
+  #-----Taint control-plane & infra needed on control-plane ---------
+- import_playbook: taint_master_nodes.yaml
+  tags: [never, rke2, add-node]
+  #------------------------------------------------------------------
+
+
+  #--- add/delete data-plane (worker) nodes -------------------------
+- import_playbook: add_agent_nodes.yaml
+  tags: [never, add-node]
+
+- import_playbook: drain_agent_nodes.yaml
+  tags: [never, delete-node]
+
+- import_playbook: ssh_connection_check.yaml
+  tags: [never, delete-node]
+
+- import_playbook: uninstall_specific_agents.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: delete_agent_nodes.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: remove_specific_node_dns.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: kubelet-swap-disable.yaml
+  tags: [never, kubelet-swap-disable]
+  #------------------------------------------------------------------
+
+
+  #--- RKE2 uninstall & clean-ups -----------------------------------
+
+- import_playbook: uninstall_all_agent_nodes.yaml
+  tags: [never, rke2-remove]
+
+- import_playbook: uninstall_all_server_nodes.yaml
+  tags: [never, rke2-remove]
+
+- import_playbook: uninstall_master_node.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: delete_master_nodes.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: remove_specific_master_node_dns.yaml
+  tags: [never, delete-node]
+  when: "hostvars[groups['primary_master_node_group'][0]].ssh_failed|bool == false"
+
+- import_playbook: remove_dns.yaml
+  tags: [never, rke2-remove]
+
+- import_playbook: image_cleanup.yaml
+  tags: [never, rke2, add-node, image-cleanup, vip]
+  #------------------------------------------------------------------

@@ -1,0 +1,3 @@
+- name: Remove Cluster debug tools resources
+  import_tasks: remove_get_cluster_info.yaml  # Make sure the filename is correct
+

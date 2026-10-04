@@ -1,0 +1,15 @@
+- name: Cleanup - Remove cluster_result directory
+  file:
+    path: "{{ playbook_dir }}/cluster_info"  
+    state: absent 
+  become: yes  
+
+# Delete the existing Service
+- name: Delete the existing Service (if any)
+  shell: kubectl delete -f "{{ playbook_dir }}/roles/get_cluster_info/files/svc.yaml" 
+  ignore_errors: true
+# Delete the existing Deployment
+- name: Delete the existing Deployment (if any)
+  shell: kubectl delete -f "{{ playbook_dir }}/roles/get_cluster_info/files/dns_resolver_dep.yaml" 
+  ignore_errors: true
+      

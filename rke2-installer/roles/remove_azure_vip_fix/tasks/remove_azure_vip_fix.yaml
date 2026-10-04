@@ -1,0 +1,14 @@
+---
+#
+- name: Remove azure vip fix cron job from master nodes
+  become: yes
+  cron:
+    name: "Run kubevip_wrapper.sh script every 3 minutes"
+    user: "{{ ansible_user }}"
+    state: absent
+  when: inventory_hostname in groups['kubemasters']
+
+- name: Remove vip folder from {{ ansible_env.HOME }} dir
+  file:
+    path: "{{ ansible_env.HOME }}/vip"
+    state: absent

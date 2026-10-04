@@ -1,0 +1,56 @@
+---
+- name: Check zookeeper namespace exists
+  shell: kubectl get namespace {{ zookeeper.namespace }}
+  register: namespace_check
+  failed_when: namespace_check.rc != 0
+
+- name: Check zookeeper statefulset exists
+  shell: kubectl get statefulset zookeeper -n {{ zookeeper.namespace }}
+  register: statefulset_check
+  failed_when: statefulset_check.rc != 0
+
+- name: Verify zookeeper pods are running
+  shell: kubectl get pods -n {{ zookeeper.namespace }} -l app=zookeeper
+  register: pod_status
+  failed_when: pod_status.stdout_lines | select('match', '.*Running.*') | list | length == 0
+
+- name: Check zookeeper service exists
+  shell: kubectl get service zookeeper -n {{ zookeeper.namespace }}
+  register: service_check
+  failed_when: service_check.rc != 0
+
+- name: Check ZooKeeper process is running
+  shell: |
+    POD_NAME=$(kubectl get pods -n {{ zookeeper.namespace }} -l app=zookeeper | grep Running | grep '{{ "2/2" if zookeeper.prometheus.image.enabled | bool else "1/1" }}' | awk '{print $1}' | head -1)
+    kubectl exec -n {{ zookeeper.namespace }} $POD_NAME -c zookeeper-server -- sh -c "ps aux | grep -v grep | grep -q java.*zookeeper"
+  register: process_check
+  retries: 3
+  delay: 10
+  until: process_check.rc == 0
+  failed_when: process_check.rc != 0
+  
+- name: Test ZooKeeper port connectivity
+  shell: |
+    POD_NAME=$(kubectl get pods -n {{ zookeeper.namespace }} -l app=zookeeper | grep Running | grep '{{ "2/2" if zookeeper.prometheus.image.enabled | bool else "1/1" }}' | awk '{print $1}' | head -1)
+    kubectl exec -n {{ zookeeper.namespace }} $POD_NAME -c zookeeper-server -- sh -c "timeout 5 bash -c '</dev/tcp/localhost/2181' && echo 'Port 2181 is open'"
+  register: port_check
+  retries: 3
+  delay: 10
+  until: port_check.rc == 0
+  failed_when: port_check.rc != 0
+
+- name: Get zookeeper logs for verification
+  shell: kubectl logs -n {{ zookeeper.namespace }} -l app=zookeeper --tail=20
+  register: recent_logs
+
+- name: Display health check summary
+  debug:
+    msg:
+      - "Zookeeper Health Check Summary:"
+      - "✓ Namespace: {{ zookeeper.namespace }} exists"
+      - "✓ Statefulset:  zookeeper is running"
+      - "✓ Pods: {{ pod_status.stdout_lines | length }} pod(s) running"
+      - "✓ Service:  zookeeper is accessible"
+      - "✓ Process: ZooKeeper process is running"
+      - "✓ Port: Port 2181 is open"
+      - "Recent logs available for troubleshooting"

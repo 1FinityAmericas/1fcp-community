@@ -1,0 +1,6 @@
+# file: roles/set-hostname/tasks/main.yml
+#
+- name: changing hostname
+  import_tasks: change_hostname.yaml
+
+#

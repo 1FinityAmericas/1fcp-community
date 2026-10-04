@@ -1,0 +1,9 @@
+---
+# Play for configuring the kubelet configurations of nodes
+- hosts: kubenodes
+  #gather_facts: no
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - kubelet_config

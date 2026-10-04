@@ -1,0 +1,316 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nifi.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name | replace "." "-" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "nifi.fullname" . }}-headless
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name | replace "." "-" }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name | replace "." "-" }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+      serviceAccountName: {{ include "nifi.fullname" . }}
+      initContainers:
+        - name: init-nifi-conf
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command:
+          - sh
+          - -c
+          - |
+            echo "Copying NiFi default conf..."
+            cp -r /opt/nifi/nifi-current/conf/* /nifi-conf-pvc/
+
+            echo "Configuring state-management.xml..."
+            # Fix empty ConfigMap Name Prefix
+            sed -i 's|<property name="ConfigMap Name Prefix"></property>|<property name="ConfigMap Name Prefix">nifi-state</property>|' /nifi-conf-pvc/state-management.xml
+
+            # Remove keystore/truststore to force HTTP
+            rm -f /nifi-conf-pvc/keystore.p12 /nifi-conf-pvc/truststore.p12
+
+            {{- if .Values.customConf.enabled }}
+            echo "Copying custom configuration files..."
+            if [ -d /opt/nifi/nifi-current/custom-conf ]; then
+              cp -r /opt/nifi/nifi-current/custom-conf/* /nifi-conf-pvc/
+              echo "Custom conf files copied successfully"
+              ls -la /nifi-conf-pvc/
+            else
+              echo "No custom-conf directory found"
+            fi
+            {{- end }}
+
+            {{- if .Values.customLib.enabled }}
+            echo "Copying existing NiFi lib files to lib-pvc volume..."
+            mkdir -p /nifi-lib-pvc/
+            # First copy all existing NiFi lib files
+            if [ -d /opt/nifi/nifi-current/lib ]; then
+              cp -r /opt/nifi/nifi-current/lib/* /nifi-lib-pvc/
+              echo "Existing NiFi lib files copied"
+            fi
+            # Then add custom lib files on top
+            if [ -d /opt/nifi/nifi-current/custom-lib ]; then
+              cp -r /opt/nifi/nifi-current/custom-lib/* /nifi-lib-pvc/
+              echo "Custom lib files copied successfully"
+            else
+              echo "No custom-lib directory found"
+            fi
+            echo "Final lib directory contents:"
+            ls -la /nifi-lib-pvc/ | tail -10
+            {{- end }}
+
+            # Extract nifi-dependencies.tar.gz if it exists
+            if [ -f /nifi-lib-pvc/nifi-dependencies.tar.gz ]; then
+              echo "Extracting nifi-dependencies.tar.gz..."
+              tar -xzf /nifi-lib-pvc/nifi-dependencies.tar.gz -C /nifi-lib-pvc/
+              rm /nifi-lib-pvc/nifi-dependencies.tar.gz
+              echo "nifi-dependencies.tar.gz extracted and removed"
+            fi
+            {{- if .Values.customExtensions.enabled }}
+            echo "Copying custom NAR files to extensions-pvc volume..."
+            mkdir -p /nifi-extensions-pvc/
+            # Copy custom NAR files to extensions directory (NiFi 2.x autoloads from here)
+            if [ -d /opt/nifi/nifi-current/custom-extensions ]; then
+              cp -r /opt/nifi/nifi-current/custom-extensions/* /nifi-extensions-pvc/
+              echo "Custom NAR files copied to extensions directory"
+            else
+              echo "No custom-extensions directory found"
+            fi
+            echo "Extensions directory contents:"
+            ls -la /nifi-extensions-pvc/
+            {{- end }}
+            {{- if .Values.dpmScripts.enabled }}
+            echo "Copying DPM scripts to dpm-scripts-pvc volume..."
+            mkdir -p /nifi-dpm-scripts-pvc/
+            if [ -d /opt/nifi/nifi-current/dpm-scripts ]; then
+              cp -r /opt/nifi/nifi-current/dpm-scripts/* /nifi-dpm-scripts-pvc/
+              echo "DPM scripts copied successfully"
+            else
+              echo "No dpm-scripts directory found"
+            fi
+            echo "DPM scripts directory contents:"
+            ls -la /nifi-dpm-scripts-pvc/
+            {{- end }} 
+
+            echo "Init complete"
+          volumeMounts:
+            - name: conf-pvc
+              mountPath: /nifi-conf-pvc
+            {{- if .Values.customLib.enabled }}
+            - name: lib-pvc
+              mountPath: /nifi-lib-pvc
+            {{- end }}
+            {{- if .Values.customExtensions.enabled }}
+            - name: extensions-pvc
+              mountPath: /nifi-extensions-pvc
+            {{- end }}
+            {{- if .Values.customConf.enabled }}
+            - name: custom-conf
+              mountPath: /opt/nifi/nifi-current/custom-conf
+              readOnly: true
+            {{- end }}
+            {{- if .Values.customLib.enabled }}
+            - name: custom-lib
+              mountPath: /opt/nifi/nifi-current/custom-lib
+              readOnly: true
+            {{- end }}
+            {{- if .Values.customExtensions.enabled }}
+            - name: custom-extensions
+              mountPath: /opt/nifi/nifi-current/custom-extensions
+              readOnly: true
+            {{- end }}
+            {{- if .Values.dpmScripts.enabled }}
+            - name: dpm-scripts-pvc
+              mountPath: /nifi-dpm-scripts-pvc
+            - name: dpm-scripts
+              mountPath: /opt/nifi/nifi-current/dpm-scripts
+              readOnly: true
+            {{- end }}
+      containers:
+        - name: nifi
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["/bin/bash", "/opt/nifi/scripts/start.sh"]
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.properties.web.port }}
+            - name: cluster
+              containerPort: 11443
+            - name: s2s
+              containerPort: 10000
+            - name: load-balance
+              containerPort: 6342
+          resources:
+            requests:
+              memory: "{{ .Values.resources.requests.memory }}"
+              cpu: "{{ .Values.resources.requests.cpu }}"
+            limits:
+              memory: "{{ .Values.resources.limits.memory }}"
+              cpu: "{{ .Values.resources.limits.cpu}}"              
+          env:
+            - name: NIFI_LOG_LEVEL
+              value: "INFO"
+              #value: "DEBUG"
+            # Enable Java remote debugging (optional)
+            #- name: JAVA_DEBUG
+            #  value: "true"
+            #- name: JAVA_DEBUG_PORT
+            #  value: "8000"
+            # Extra JVM debug options
+            - name: NIFI_JVM_OPTS
+              value: "-Xlog:gc*:file=/opt/nifi/nifi-current/logs/gc.log"
+            - name: NIFI_WEB_HTTPS_PORT
+              value: "8443"
+            - name: NIFI_CLUSTER_NODE_READ_TIMEOUT
+              value: "{{ .Values.properties.cluster.nodeReadTimeout }}"
+            - name: NIFI_CLUSTER_NODE_CONNECTION_TIMEOUT
+              value: "{{ .Values.properties.cluster.nodeConnectionTimeout }}"
+            - name: NIFI_CLUSTER_REQUEST_REPLICATION_CLAIM_TIMEOUT
+              value: "{{ .Values.properties.cluster.requestReplicationClaimTimeout }}"
+            - name: NIFI_CLUSTER_IS_NODE
+              value: "{{ .Values.properties.cluster.isNode }}"
+            - name: NIFI_JVM_HEAP_INIT
+              value: "{{ .Values.jvm.xms }}"
+            - name: NIFI_JVM_HEAP_MAX
+              value: "{{ .Values.jvm.xmx }}"
+            - name: NIFI_WEB_PROXY_CONTEXT_PATH
+              value: "/nifi"
+            - name: NIFI_WEB_PROXY_HOST
+              value:  "{{ .Values.nifiWebProxyHost }}" 
+            - name: AUTH
+              value: "{{ .Values.auth.mode }}"
+            - name: SINGLE_USER_CREDENTIALS_USERNAME
+              value: "{{ .Values.auth.username }}"
+            - name: SINGLE_USER_CREDENTIALS_PASSWORD
+              value: "{{ .Values.auth.password }}"
+            # NEW: cluster env
+            - name: NIFI_CLUSTER_NODE_PROTOCOL_PORT
+              value: "11443"
+            - name: NIFI_CLUSTER_LOAD_BALANCE_PORT
+              value: "6342"
+            - name: NIFI_REMOTE_INPUT_SOCKET_PORT
+              value: "10000"
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NIFI_HEADLESS_SERVICE
+              value: "{{ include "nifi.fullname" . }}-headless"
+          volumeMounts:
+            - name: nifi-tls
+              mountPath: /opt/nifi/certs
+              readOnly: true
+            - name: conf-pvc
+              mountPath: /opt/nifi/nifi-current/conf
+            - name: data
+              mountPath: /opt/nifi/nifi-current/data
+            {{- if .Values.customLib.enabled }}
+            - name: lib-pvc
+              mountPath: /opt/nifi/nifi-current/lib
+            {{- end }}
+            {{- if .Values.customExtensions.enabled }}
+            - name: extensions-pvc
+              mountPath: /opt/nifi/nifi-current/extensions
+            {{- end }}
+            {{- if .Values.dpmScripts.enabled }}
+            - name: dpm-scripts-pvc
+              mountPath: /opt/nifi/nifi-current/dpm-scripts
+            {{- end }}              
+            - name: start-sh
+              mountPath: /opt/nifi/scripts/start.sh
+              subPath: start.sh
+
+      volumes:
+        - name: nifi-tls
+          secret:
+            secretName: apache-nifi-secret
+        - name: start-sh
+          configMap:
+            name: {{ include "nifi.fullname" . }}-start-sh
+            defaultMode: 0755
+        {{- if .Values.customConf.enabled }}
+        - name: custom-conf
+          hostPath:
+            path: {{ .Values.customConf.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.customLib.enabled }}
+        - name: custom-lib
+          hostPath:
+            path: {{ .Values.customLib.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.customExtensions.enabled }}
+        - name: custom-extensions
+          hostPath:
+            path: {{ .Values.customExtensions.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.dpmScripts.enabled }}
+        - name: dpm-scripts
+          hostPath:
+            path: {{ .Values.dpmScripts.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}            
+      terminationGracePeriodSeconds: 30
+
+  volumeClaimTemplates:
+    - metadata:
+        name: conf-pvc
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: 100Mi
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: 5Gi
+    {{- if .Values.customLib.enabled }}
+    - metadata:
+        name: lib-pvc
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.customLib.storageSize | default "5Gi" }}
+    {{- end }}
+    {{- if .Values.customExtensions.enabled }}
+    - metadata:
+        name: extensions-pvc
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.customExtensions.storageSize | default "5Gi" }}
+    {{- end }}
+
+    {{- if .Values.dpmScripts.enabled }}
+    - metadata:
+        name: dpm-scripts-pvc
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.dpmScripts.storageSize | default "1Gi" }}
+    {{- end }}
+

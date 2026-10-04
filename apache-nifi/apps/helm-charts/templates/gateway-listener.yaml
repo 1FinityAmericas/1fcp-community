@@ -1,0 +1,32 @@
+{{- if and (eq .Values.ingressController.name "traefik") .Values.ingressController.localCert }}
+{{- $fullName := include "nifi.fullname" . -}}
+{{- $hostname := .Values.shared_gateway.hostname | default .Values.ingress.ip -}}
+---
+# ==============================================================================
+# Gateway - Dedicated listener for NiFi with its own TLS certificate
+# ==============================================================================
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $fullName }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name | replace "." "-" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: {{ $fullName }}-https
+      protocol: HTTPS
+      port: 8443
+      hostname: {{ $hostname }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: apache-nifi-secret
+            namespace: {{ .Release.Namespace }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}
+

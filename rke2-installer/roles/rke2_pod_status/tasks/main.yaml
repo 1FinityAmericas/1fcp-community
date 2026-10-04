@@ -1,0 +1,4 @@
+# check pod statuses
+
+- name: check pod statuses
+  import_tasks: rke2_pod_status.yaml

@@ -1,0 +1,29 @@
+- name: Uninstall Helm chart for Python Fast-API
+  become: yes
+  ignore_errors: true
+  shell: |
+    helm uninstall fast-api -n {{ kubevip_images.fast_api.project }}
+
+
+- name: Uninstall Helm chart for cronjob
+  become: yes
+  shell: |
+    helm uninstall cronjob-release -n {{ kubevip_images.cronjob.project }}
+  ignore_errors: true
+
+
+- name: waiting for the cronjob  to be deleted
+  pause:
+    seconds: 10
+
+- name: Delete all resources in the namespace
+  become: yes
+  shell: |
+    kubectl delete all --all -n {{ kubevip_images.cronjob.project }}
+  ignore_errors: true
+
+- name: Delete the namespace
+  become: yes
+  shell: |
+    kubectl delete namespace {{ kubevip_images.cronjob.project }}
+  ignore_errors: true

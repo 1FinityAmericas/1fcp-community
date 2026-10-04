@@ -1,0 +1,26 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - Please execute the deployment script with one of the following options:
+          -   -t deploy-nifi                : To deploy apache nifi application            
+          -   -t cleanup-nifi               : Cleaning up apache nifi application             
+      tags: help
+      run_once: true
+
+- import_playbook: app_config.yaml
+  tags: [never, push-images, deploy-nifi, cleanup-nifi]
+
+- import_playbook: push_images.yaml
+  tags: [never, push-images, deploy-nifi]
+
+- import_playbook: nifi_cleanup.yaml
+  tags: [never, cleanup-nifi]
+  
+- import_playbook: deploy_nifi.yaml
+  tags: [never, deploy-nifi]
+

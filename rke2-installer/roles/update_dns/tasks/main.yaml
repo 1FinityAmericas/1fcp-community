@@ -1,0 +1,6 @@
+# file: roles/update_dns/tasks/main.yml
+#
+- name: update dns
+  import_tasks: update_dns.yaml
+
+#

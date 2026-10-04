@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: headless-stateful
+  namespace: default
+  labels:
+    app: headless-stateful
+spec:
+  replicas: {{ nodes_count }}  # This will be replaced with the actual node count
+  selector:
+    matchLabels:
+      app: headless-stateful
+  serviceName: headless-svc-stateful
+  template:
+    metadata:
+      labels:
+        app: headless-stateful
+    spec:
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/unschedulable"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: dns-resolver
+          image: docker.io/rancherlabs/swiss-army-knife:latest
+          ports:
+            - containerPort: 80
+

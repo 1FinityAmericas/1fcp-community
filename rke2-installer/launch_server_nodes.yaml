@@ -1,0 +1,9 @@
+---
+# Play for launchinf the rest of the server nodes
+- hosts: secondary_master_node_group
+  #gather_facts: no
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - launch_server_node

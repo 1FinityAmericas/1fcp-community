@@ -1,0 +1,80 @@
+cassandra:
+  app_name: cassandra      
+  namespace: ndl
+
+  #single or dual stack can be standalone or localha (which can be geod)
+  #standalone and geod are mutually exclusive
+  #we don't use standalone anymore; just enable or disable geod
+  # standalone: true
+  geod: "disable"     #disable or enable
+
+  storageClass: "rancher-dynamic-local-path"
+
+  #how many retries before giving up helm install
+  cassandra_retry: 90
+
+  imagePullSecrets:
+  # - name: vnc-docker-registry-key
+
+  #use this to set a custom name, like cassandra-<identifier>-0
+  # nameOverride:
+  #use this to override the entire name; this will override nameOverride
+  # fullnameOverride:
+
+  image:
+    repository: cassandra
+    tag: 4.1.5-debian-12-r0-patched
+    enable: true
+    pullPolicy: IfNotPresent
+  init:
+    image:
+      repository: busybox_fcp
+      tag: "1.0"
+      enable: true
+  # Configuration to set passwordseeder for cassandra statefulset
+  enablePasswordSeeder: true
+  cluster:
+    replicaCount: 1
+    datacenter: dc1
+    rack: rack1
+    seeds:
+    seedCount: 1
+    readTimeout: 10000ms
+    writeTimeout: 5000ms
+    ## Enable the creation of the Pod Disruption Budget
+    pdbEnabled: false
+    ## Minimum number of cluster nodes that will be running. Needs pdbEnabled=true
+    minAvailable: 1
+  dbUser:
+    user: cassandra
+    password: cassandra
+  resources:
+    limits:
+      cpu: 4
+      memory: 4Gi
+    requests:
+      cpu: 2
+      memory: 2Gi
+  jvm:
+    maxHeapSize: 2G
+    newHeapSize: 600m
+  # Pod Spec configuration
+  podSpec:
+    hostNetwork: true
+  securityContext:
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+
+  # metrics is disabled by default
+  metrics:
+    enabled: false
+  nodetool_repair: false
+  # NodeSelector labels for cassandra sts
+  nodeSelector:
+    #isInfra_node: "yes"
+
+external_registry:
+  auth: false
+  username: automation
+  password: automation

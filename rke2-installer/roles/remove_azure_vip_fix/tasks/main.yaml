@@ -1,0 +1,7 @@
+---
+# Removes the azure vip fix cron job
+- name: Removes the azure vip fix cron job
+  import_tasks: remove_azure_vip_fix.yaml
+  when: azure_vip_fix.enable | bool
+
+

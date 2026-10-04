@@ -1,0 +1,3 @@
+---
+- name: deploying nifi application
+  include_tasks: deploy_nifi.yaml

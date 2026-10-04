@@ -1,0 +1,24 @@
+---
+#
+- name: Identify master nodes
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Set master nodes fact
+      set_fact:
+        master_nodes: "{{ groups['new_nodes'] | select('in', groups['kubemasters']) | list }}"
+      register: master_nodes_fact
+
+    - name: Set master nodes in hostvars
+      add_host:
+        name: "{{ item }}"
+        groups: master_nodes_group
+      loop: "{{ master_nodes_fact.ansible_facts.master_nodes }}"
+
+- name: Run role on master nodes
+  hosts: master_nodes_group
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - launch_server_node

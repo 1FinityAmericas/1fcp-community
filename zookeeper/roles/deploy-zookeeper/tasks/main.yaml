@@ -1,0 +1,4 @@
+
+---
+- name: Deploy Zookeeper
+  import_tasks: deploy-zookeeper.yaml

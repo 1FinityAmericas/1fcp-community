@@ -1,0 +1,10 @@
+---
+# Play for drain the specific agent nodes
+- hosts: primary_master_node_group
+  gather_facts: no
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+  roles:
+    - drain_agent_nodes

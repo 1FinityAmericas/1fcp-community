@@ -1,0 +1,5 @@
+---
+# Now Execute the Cluster Info Script after the tests are completed
+- name: Execute debug tools script
+  import_tasks: get_cluster_info.yaml
+

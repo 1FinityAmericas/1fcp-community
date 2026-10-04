@@ -1,0 +1,5 @@
+# file: roles/verify_cluster_version
+
+- name: verify cluster version
+  import_tasks: verify_cluster_version.yaml
+  when:  version_check is defined

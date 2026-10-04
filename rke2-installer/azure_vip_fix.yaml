@@ -1,0 +1,8 @@
+---
+# Play to fix azure kube vip issue
+- hosts: kubemasters
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - azure_vip_fix

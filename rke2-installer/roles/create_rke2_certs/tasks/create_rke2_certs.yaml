@@ -1,0 +1,39 @@
+---
+
+- name: Creates server tls folder if does not exist
+  become: yes
+  file:
+    path: /var/lib/rancher/rke2/server/tls/
+    state: directory
+
+- name: Clean existing certificates
+  become: yes
+  shell: "rm -rf /var/lib/rancher/rke2/server/tls/*"
+
+- name: Copy rke2-ca.crt script to the master node under /var/lib/rancher/rke2/server/tls/
+  become: yes
+  shell: cp /etc/pki/tls/certs/rke2-ca.crt /var/lib/rancher/rke2/server/tls/root-ca.crt
+
+- name: Copy rke2-ca.key script to the master node under /var/lib/rancher/rke2/server/tls/
+  become: yes
+  shell: cp /etc/pki/tls/private/rke2-ca.key /var/lib/rancher/rke2/server/tls/root-ca.key
+
+- name: Copy generate-custom-ca-certs.sh script to playbook dir
+  shell: "cp {{ playbook_dir }}/roles/create_rke2_certs/files/generate-custom-ca-certs.sh {{ playbook_dir }}/generate-custom-ca-certs.sh"
+  ignore_errors: yes
+
+- name: Updated certs durations into script generate-custom-ca-certs.sh
+  shell: "sed -i 's/days 365/days {{ custom_cert.rotate_duration_days }}/g' {{ playbook_dir }}/generate-custom-ca-certs.sh"
+  ignore_errors: yes
+
+- name: Updated certs durations into script generate-custom-ca-certs.sh
+  shell: "sed -i 's/fujitsu.com/{{ custom_cert.domain }}/g' {{ playbook_dir }}/generate-custom-ca-certs.sh"
+  ignore_errors: yes
+
+- name: Run script to genrate custom CA
+  become: yes
+  shell: "{{ playbook_dir }}/generate-custom-ca-certs.sh"
+
+- name: Remove root ca certs form /var/lib/rancher/rke2/server/tls/ 
+  become: yes
+  shell: "rm -f /var/lib/rancher/rke2/server/tls/root-ca.*"

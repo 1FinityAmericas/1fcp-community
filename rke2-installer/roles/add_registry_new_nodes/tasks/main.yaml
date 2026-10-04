@@ -1,0 +1,3 @@
+---
+- name: add certs of local docker registry to new nodes
+  import_tasks: add_registry_new_nodes.yaml

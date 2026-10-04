@@ -1,0 +1,137 @@
+---
+- name: 'Preparing local docker registry certificates for the environment'
+  debug:
+    msg: 'starting ...'
+
+
+- name: '[TLS-Generation] setting se-linux flag  if enabled & directory for registry certificates'
+  become: yes
+  shell: |
+    setsebool -P container_manage_cgroup on
+    mkdir -p "{{ docker_registry.reg_path }}/loc-reg/certs/"
+    chown -R '{{ansible_user}}:{{ansible_group}}' "{{ docker_registry.reg_path }}/loc-reg/"
+    chmod -R 755 "{{ docker_registry.reg_path }}/loc-reg/"
+    rm -rf "{{ docker_registry.reg_path }}/loc-reg/*"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubemasters'] }}"
+
+- name: 'Copy the registries.yaml template to config directory for override subsequently'
+  copy:
+    src: "{{ playbook_dir }}/roles/deploy_reg_certs/files/registries.yaml"
+    dest: "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/"
+
+- name: Update registries.yaml with inventory DNS "{{ext_doc_reg_dns}}" and certs - loc-reg.crt,loc-reg.key,rootCA-loc-reg.crt
+  replace:
+    path: "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/registries.yaml"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  loop:
+    - regexp: 'fnc-docker-reg:3000'
+      replace: '{{ext_doc_reg_dns}}'
+
+- name: '[TLS-Generation] Generate rootCA-loc-reg.key & rootCA-loc-reg.crt if not exists'
+  shell: |
+    cd "{{ docker_registry.reg_path }}/loc-reg/certs/"
+    openssl genrsa -out rootCA-loc-reg.key 4096
+    openssl req -x509 -new -nodes -key rootCA-loc-reg.key -sha256 -days 3650 -out rootCA-loc-reg.crt -subj "/C=US/ST=CA/L=TX/O=FNC/OU=PSBU/CN={{ ext_doc_reg_dns }}/emailAddress=no-reply@fujitsu.com" -addext "subjectAltName = DNS:{{ ext_doc_reg_dns }}"
+  args:
+    creates: "{{ docker_registry.reg_path }}/loc-reg/certs/rootCA-loc-reg.crt"
+
+
+
+- name: '[TLS-Generation] Generate the key and csr files if not exists'
+  shell: |
+    cd "{{ docker_registry.reg_path }}/loc-reg/certs/"
+    openssl genrsa -out loc-reg.key 4096
+    openssl req -new -key loc-reg.key -nodes -out loc-reg.csr \
+      -subj "/C=US/ST=CA/L=TX/O=FNC/OU=PSBU/CN={{ ext_doc_reg_dns }}" \
+      -addext "subjectAltName=DNS:{{ ext_doc_reg_dns }}"
+    # verify CSR DNS
+    openssl req -in loc-reg.csr -noout -text | grep -i dns
+  args:
+    creates: "{{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.csr"
+  register: results
+  ignore_errors: false
+
+- debug:
+    var: results.stdout
+
+- name: '[TLS-Generation] Generate .crt signed if not exists'
+  shell: |
+    cd "{{ docker_registry.reg_path }}/loc-reg/certs/"
+    openssl x509 -req -in loc-reg.csr -CA rootCA-loc-reg.crt -CAkey rootCA-loc-reg.key \
+      -CAcreateserial -out loc-reg.crt -days 365000 -sha256 \
+      -extfile <(printf "subjectAltName=DNS:{{ ext_doc_reg_dns }}")
+    # Verify
+    openssl x509 -in loc-reg.crt -noout -text | grep DNS
+    openssl verify -CAfile rootCA-loc-reg.crt loc-reg.crt
+  args:
+    executable: /bin/bash
+    creates: "{{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.crt"
+  register: results
+  ignore_errors: false
+
+- debug:
+    var: results.stdout
+
+- name: adding local registry DNS to /etc/hosts of all nodes
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: present
+    insertafter: EOF
+    line: "{{ ingress_ip }} {{ext_doc_reg_dns}}"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubenodes'] }}"
+
+- name: 'Prepare folder /etc/rancher/rke2 on all nodes '
+  become: yes
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubenodes'] }}"
+  
+- name: '[TLS-Fetch] fetch generated certs in nfs-server(registry vm) to ansible-host for later publishing to nodes'
+  become: yes
+  fetch:
+    src:  "{{ item }}"
+    dest: "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/"
+    flat: true
+  with_items:
+  - "{{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.crt"
+  - "{{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.key"
+  - "{{ docker_registry.reg_path }}/loc-reg/certs/rootCA-loc-reg.crt"
+
+- name: '[TLS-Copy] Copying  generated registry certs to all other masters for redundancy when multiple-masters exists.'
+  copy:
+    src:  "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/"
+    dest: "{{ docker_registry.reg_path }}/loc-reg/certs/"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['secondary_master_node_group'] }}"
+  when: groups['secondary_master_node_group'] | default([]) | length > 0
+
+- name: '[Publish registries.yaml] Copying registries.yaml to all nodes under path:/etc/rancher/rke2/'
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/registries.yaml"
+    dest: /etc/rancher/rke2/registries.yaml
+    mode: '0644'
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubenodes'] }}"
+
+- name: Install registry Root CA into OS trust store (RHEL/CentOS) on all nodes
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/deploy_reg_certs/files/config/rootCA-loc-reg.crt"
+    dest: /etc/pki/ca-trust/source/anchors/rootCA-loc-reg.crt
+    mode: '0644'
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubenodes'] }}"
+
+- name: Update CA trust (RHEL/CentOS)
+  become: yes
+  command: update-ca-trust extract
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubenodes'] }}"
+

@@ -1,0 +1,4 @@
+# file: roles/delete_master_nodes/tasks/main.yml
+#
+- name: delete the master nodes
+  import_tasks: delete_master_nodes.yaml

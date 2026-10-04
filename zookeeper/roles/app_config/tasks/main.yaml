@@ -1,0 +1,24 @@
+---
+
+- name: Load App Setup/configuration data
+  include_vars:
+    file: host_vars/app_config.yaml
+
+- name: set registry path
+  set_fact:
+    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+
+- name: Register ansible user id
+  shell: "id -u {{ ansible_user }}"
+  register: user_id
+
+- debug:
+    msg: "user_id -> {{user_id }}"
+
+- name: set ansible userid
+  set_fact:
+    ansible_user_id: "{{ user_id }}"
+
+- name: set app name
+  set_fact:
+    app_name: "{{ zookeeper.app_name }}"

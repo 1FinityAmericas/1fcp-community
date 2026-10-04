@@ -1,0 +1,16 @@
+- hosts:
+    - primary_master_node_group
+    - secondary_master_node_group
+  become: yes
+  serial: 1
+  gather_facts: false
+
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+  vars:
+    rke2_service_type: "server"
+
+  roles:
+    - rke2_server_restart

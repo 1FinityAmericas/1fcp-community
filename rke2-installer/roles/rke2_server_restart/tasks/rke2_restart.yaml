@@ -1,0 +1,21 @@
+- name: Restart RKE2 service
+  become: yes
+  systemd:
+    name: "rke2-{{ rke2_service_type }}.service"
+    state: restarted
+    enabled: yes
+
+- name: Wait for RKE2 service to become active
+  pause:
+    seconds: 30
+
+- name: Ensure RKE2 service is running
+  become: yes
+  service:
+    name: "rke2-{{ rke2_service_type }}.service"
+    state: started
+  register: service_check
+  until: service_check.status.ActiveState is defined and service_check.status.ActiveState == "active"
+  retries: 30
+  delay: 10
+

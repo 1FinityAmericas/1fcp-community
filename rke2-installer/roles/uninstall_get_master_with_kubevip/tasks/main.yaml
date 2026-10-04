@@ -1,0 +1,3 @@
+- name: Uninstall fast-api python app
+  import_tasks: uninstall_get_master_with_kubevip.yaml 
+

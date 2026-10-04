@@ -1,0 +1,5 @@
+---
+#
+- name: Installing dependencies.
+  import_tasks: dependency.yaml
+

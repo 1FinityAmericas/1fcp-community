@@ -1,0 +1,8 @@
+# file: roles/launch_agent_node/tasks/main.yml
+#
+- name: cleaning up agent node during add-node
+  import_tasks: agent_node_cleanup.yaml
+  when: "'add-node' in ansible_run_tags"
+
+- name: launcing an agent node
+  import_tasks: launch_agent_node.yaml

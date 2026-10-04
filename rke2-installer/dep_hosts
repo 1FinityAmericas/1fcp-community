@@ -1,0 +1,79 @@
+[localhost]
+127.0.0.1
+
+# ensure to have a sudo enabled user configured in all nodes
+[localhost:vars]
+ansible_connection=local
+ansible_user=virtuora
+ansible_group=virtuora
+ansible_password='password'
+ansible_sudo_pass='password'
+
+# The number of master nodes can be either one or three.
+# Plays will be adjusted according to the number of master nodes
+# uncomment master2 & master3 for a multi-master HA cluster
+[kubenodes]
+master1 ip=10.156.205.51   host=master1  group='node-config-master'   ip6=2001:abc:0:224:1c1d:c468:7f54:867f
+master2 ip=10.156.205.52   host=master2  group='node-config-master'  ip6=2001:abc:0:224::10
+master3 ip=10.156.205.53   host=master3  group='node-config-master'  ip6=2001:abc:0:224::11
+worker1 ip=10.156.205.54   host=worker1  group='node-config-compute'  ip6=2001:abc:0:224::12
+worker2 ip=10.156.205.55   host=worker2  group='node-config-compute'  ip6=2001:abc:0:224::13
+worker3 ip=10.156.205.56   host=worker3  group='node-config-compute'  ip6=2001:abc:0:224::14
+# ensure to have a sudo enabled user configured in all nodes
+[kubenodes:vars]
+#ansible_ssh_private_key_file=./keyfile.pem
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_connection=ssh
+ansible_ssh_timeout=120
+ansible_user=virtuora
+ansible_group=virtuora
+ansible_password='password'
+ansible_sudo_pass='password'
+stack_type='single'
+
+#-------------------------Local Registry Settings--------------------------------
+# 'true' for deploying local registry
+ext_doc_reg_dns='fnc.fujitsu.reg'
+
+#-------------------------Multi-master kube-vip Settings-------------------------
+# change it to true if HA RKE2 is required with a VIP address
+ha_rke2=false
+# update this field with the respective network interface
+ha_rke2_interface=ens3
+# update  this field with a VIP address that is not assigned to any of the VMs in the network
+ha_rke2_vip_address=10.156.205.62
+# update the VIP address in the hostname
+ha_rke2_vip_hostname=master.10.156.205.62.nip.io
+
+#-------------------------RKE2 version Settings----------------------------------
+# rke2 server version
+rke2_server_ver=v1.34.1+rke2r1
+# rke2 client version
+rke2_client_ver=v1.34.1+rke2r1
+
+#-------------------------CICADA Version------------------------------------------------
+#current release tag
+release_tag=fcp/1.0
+
+# uncomment master2 & master3 for a multi-master HA cluster
+[kubemasters]
+master1
+master2
+master3
+
+[kubeworkers]
+worker1
+worker2
+worker3
+
+[new_nodes]
+worker4
+worker5
+
+[delete_nodes]
+worker3
+worker4
+
+[swap_nodes]
+worker11
+

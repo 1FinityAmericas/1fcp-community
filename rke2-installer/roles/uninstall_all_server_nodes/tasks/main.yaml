@@ -1,0 +1,4 @@
+# file: roles/uninstall_rke2_server_nodes/tasks/main.yml
+#
+- name: uninstall server nodes
+  import_tasks: uninstall_all_server_nodes.yaml

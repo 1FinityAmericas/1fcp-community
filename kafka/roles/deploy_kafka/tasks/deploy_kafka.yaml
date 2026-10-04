@@ -1,0 +1,133 @@
+---
+
+- name: Get list of StorageClasses
+  shell: kubectl get storageclass --no-headers
+  register: sc_list
+  changed_when: false
+
+- name: Fail if no StorageClass exists in cluster
+  fail:
+    msg: "No StorageClass available in the cluster.  Kafka deployment cannot continue."
+  when: sc_list.stdout | trim | length == 0
+
+
+- name: Check if app StorageClass exists
+  shell: kubectl get storageclass {{ kafka.persistence.storage_class }}
+  register: sc_check
+  failed_when: false
+  changed_when: false
+
+- name: Get default StorageClass
+  command: >
+    kubectl get storageclass
+    -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
+  register: default_sc
+  changed_when: false
+  when: sc_check.rc != 0
+
+- name: Set effective StorageClass
+  set_fact:
+    effective_storage_class: "{{ kafka.persistence.storage_class if sc_check.rc == 0 else default_sc.stdout }}"
+
+- name: Fail if no usable StorageClass
+  fail:
+    msg: "Specified StorageClass '{{ kafka.persistence.storage_class }}' does not exist and no default StorageClass is available."
+  when: sc_check.rc != 0 and (default_sc.stdout | trim | length == 0)
+
+- name: create  namespace
+  shell: kubectl create ns {{ kafka.namespace }}
+  ignore_errors: true
+
+- name: Zookeeper pod containers count calculation
+  set_fact:
+    zookeeper_containers: "{{ 2 if kafka.zookeeper.prometheus.enabled else 1 }}"
+
+- name: List of all zookeeper pods 
+  shell: kubectl get pods -n {{ kafka.zookeeper.namespace }} -l app=zookeeper --no-headers | awk '{ print $1}'
+  register: zookeeper_pods
+  changed_when: false
+
+- name: Fail if no zookeeper pods found
+  fail:
+    msg: "No Zookeeper pods found in namespace {{ kafka.zookeeper.namespace }}"
+  when: zookeeper_pods.stdout_lines | length == 0
+
+- name: Check all zookeeper pods are running
+  shell: kubectl get pods -n {{ kafka.zookeeper.namespace }} -l app=zookeeper | awk '{if ($3 == "Running" && $2 == "{{ zookeeper_containers }}/{{ zookeeper_containers }}" ) print $1}'
+  register: result
+  failed_when: (result.stdout_lines | length) < (zookeeper_pods.stdout_lines | length)
+
+- name: helm install for deploying chart
+  shell: |
+    helm upgrade --install {{ app_name }} --namespace {{ kafka.namespace }} -f values.yaml ./ \
+      --set global.imageRegistry={{ registry }} \
+      --set global.ns={{ kafka.namespace }} \
+      --set brokers={{ kafka.cluster.replicaCount }} \
+      --set image={{ kafka.kafka_container.image.repository }} \
+      --set imageTag={{ kafka.kafka_container.image.tag }} \
+      --set imagePullPolicy={{ kafka.kafka_container.image.pull_policy }} \
+      --set prometheus.image={{ kafka.prometheus_container.image.repository }} \
+      --set prometheus.imageTag={{ kafka.prometheus_container.image.tag }} \
+      --set prometheus.imagePullPolicy={{ kafka.prometheus_container.image.pull_policy }} \
+      --set initBusyBoxContainer.image={{ kafka.busybox_init_container.image.repository }} \
+      --set initBusyBoxContainer.imageTag={{ kafka.busybox_init_container.image.tag }} \
+      --set initBusyBoxContainer.imagePullPolicy={{ kafka.busybox_init_container.image.pull_policy }} \
+      --set resources.requests.cpu={{ kafka.resources.requests.cpu }} \
+      --set resources.requests.memory={{ kafka.resources.requests.memory }} \
+      --set resources.limits.cpu={{ kafka.resources.limits.cpu }} \
+      --set resources.limits.memory={{ kafka.resources.limits.memory }} \
+      --set podManagementPolicy={{ kafka.pod_management_policy }} \
+      --set updateStrategy={{ kafka.update_strategy }} \
+      --set-string "configurationOverrides.default\.replication\.factor"={{ kafka.configuration_overrides["default.replication.factor"] }} \
+      --set-string "configurationOverrides.num\.partitions"={{ kafka.configuration_overrides["num.partitions"] }} \
+      --set-string "configurationOverrides.offsets\.topic\.replication\.factor"={{ kafka.configuration_overrides["offsets.topic.replication.factor"] }} \
+      --set-string "configurationOverrides.message\.max\.bytes"={{ kafka.configuration_overrides["message.max.bytes"] }} \
+      --set-string "configurationOverrides.acks"={{ kafka.configuration_overrides["acks"] }} \
+      --set-string "configurationOverrides.max\.request\.size"={{ kafka.configuration_overrides["max.request.size"] }} \
+      --set-string "configurationOverrides.max\.block\.ms"={{ kafka.configuration_overrides["max.block.ms"] }} \
+      --set-string "configurationOverrides.max\.in\.flight\.requests\.per\.connection"={{ kafka.configuration_overrides["max.in.flight.requests.per.connection"] }} \
+      --set-string "configurationOverrides.producer\.purgatory\.purge\.interval\.requests"={{ kafka.configuration_overrides["producer.purgatory.purge.interval.requests"] }} \
+      --set-string "configurationOverrides.replica\.lag\.time\.max\.ms"={{ kafka.configuration_overrides["replica.lag.time.max.ms"] }} \
+      --set-string "configurationOverrides.zookeeper\.session\.timeout\.ms"={{ kafka.configuration_overrides["zookeeper.session.timeout.ms"] }} \
+      --set-string "configurationOverrides.delete\.topic\.enable"={{ kafka.configuration_overrides["delete.topic.enable"] }} \
+      --set-string "configurationOverrides.log\.roll\.hours"={{ kafka.configuration_overrides["log.roll.hours"] }} \
+      --set-string "configurationOverrides.log\.retention\.hours"={{ kafka.configuration_overrides["log.retention.hours"] }} \
+      --set heapOptions="{{ kafka.heap_options }}" \
+      --set insync.replicas={{ kafka.insync.replicas }} \
+      --set retention.bytes={{ kafka.retention.bytes }} \
+      --set retention.ms={{ kafka.retention.ms }} \
+      --set roll.ms={{ kafka.roll.ms }} \
+      --set segment.bytes={{ kafka.segment.bytes }} \
+      --set nodeAffinity.enabled={{ kafka.node_affinity.enabled }} \
+      --set nodeport.enabled={{ kafka.nodeport.enabled }} \
+      --set nodeport.servicePort={{ kafka.nodeport.service_port }} \
+      --set nodeport.firstListenerPort={{ kafka.nodeport.first_listener_port }} \
+      --set persistence.enabled={{ kafka.persistence.enabled }} \
+      --set persistence.size={{ kafka.persistence.size }} \
+      --set persistence.storageClass={{ effective_storage_class }} \
+      --set securityContext.runAsGroup={{ kafka.securityContext.runAsGroup }} \
+      --set securityContext.runAsUser={{ kafka.securityContext.runAsUser }} \
+      --set securityGroup.fsGroup={{ kafka.securityContext.fsGroup }} \
+      --set prometheus.enabled={{ kafka.prometheus.enabled }} \
+      --set jmx.port={{ kafka.jmx.port }} \
+      --set prometheus.port={{ kafka.prometheus.port }} \
+      --set zookeeper.serviceName={{ kafka.zookeeper.service_name }} \
+      --set zookeeper.namespace={{ kafka.zookeeper.namespace }} \
+      --set zookeeper.port={{ kafka.zookeeper.port }} \
+      --set zookeeper.svc={{ kafka.zookeeper.svc }} \
+      {% if kafka.nodeSelector | default({}) %}
+      {% for key, value in kafka.nodeSelector.items() %}
+      --set nodeSelector.{{ key }}={{ value }} \
+      {% endfor %}
+      {% endif %}
+
+  args:
+    chdir: "{{ playbook_dir }}/apps/helm-charts"
+  register: status
+
+- name: waiting for {{ kafka.cluster.replicaCount }} kafka pods to become "running" state
+  shell: "kubectl get pods -n {{ kafka.namespace }} --no-headers -l app=kafka | awk '{ print $2, $3}' "
+  register: kafka_pods
+  until: (kafka_pods.stdout_lines|length > 0 )  and  ((kafka_pods.stdout | regex_findall('1/1') | length) == kafka.cluster.replicaCount ) and ((kafka_pods.stdout | regex_findall('Running') | length) == kafka.cluster.replicaCount )
+  delay: 20
+  retries: 30

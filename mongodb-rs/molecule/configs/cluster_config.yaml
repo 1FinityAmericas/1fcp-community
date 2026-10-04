@@ -1,0 +1,36 @@
+cluster_type: "kind"
+# USAGE: Edit this file directly to match your Kubernetes platform.
+# When switching platforms, update the values below to match your environment
+
+# ==============================================================================
+# PLATFORM IDENTIFICATION
+# ==============================================================================
+# Identify your Kubernetes distribution and version
+platform:
+  type: "k8s"             # Options: rke2, k3s, k8s, openshift
+  version: "v1.23.17"     # Your cluster version (kind uses v1.23.17)
+
+# ==============================================================================
+# CONTAINER RUNTIME CONFIGURATION
+# ==============================================================================
+# Configure paths and settings for your container runtime
+# Edit these values when switching platforms
+container_runtime:
+  type: "containerd"              # Options: containerd, docker, cri-o
+  namespace: "k8s.io"             # Container namespace (usually k8s.io)
+
+  binaries:
+    kind:
+      ctr: "/usr/bin/ctr"
+    rke2:
+      ctr: "/var/lib/rancher/rke2/bin/ctr"
+    k3s:
+      ctr: "/usr/local/bin/ctr"
+    k8s:
+      ctr: "/usr/bin/ctr"
+
+  sockets:
+    kind: "/run/containerd/containerd.sock"
+    rke2: "/run/k3s/containerd/containerd.sock"
+    k3s: "/run/k3s/containerd/containerd.sock"
+    k8s: "/run/containerd/containerd.sock"

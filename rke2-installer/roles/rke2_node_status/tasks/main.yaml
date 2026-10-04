@@ -1,0 +1,4 @@
+# check node statuses
+
+- name: check node statuses
+  import_tasks: rke2_node_status.yaml

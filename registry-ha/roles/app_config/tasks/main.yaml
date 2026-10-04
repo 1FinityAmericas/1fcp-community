@@ -1,0 +1,92 @@
+# file: roles/app_config/tasks/main.yml
+
+- name: Detect Kubernetes cluster flavour
+  shell: |
+    kubectl get nodes -o jsonpath='{.items[0].spec.providerID}' | cut -d':' -f1
+  register: detected_cluster_type
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  changed_when: false
+  run_once: true
+
+
+- name: Print detected Kubernetes cluster type
+  debug:
+    msg: "Detected Kubernetes cluster type: {{ detected_cluster_type.stdout | trim }}"
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  run_once: true
+
+- name: Update cluster_type in cluster_config.yaml (replace only)
+  lineinfile:
+    path: "{{ cluster_config_file | default(playbook_dir ~ '/cluster_config.yaml') }}"
+    regexp: '^\s*cluster_type\s*:'
+    line: 'cluster_type: "{{ detected_cluster_type.stdout | trim }}"'
+    insertafter: BOF
+  run_once: true
+
+
+- name: Load cluster configuration
+  include_vars:
+    file: "{{ cluster_config_file | default(playbook_dir ~ '/cluster_config.yaml') }}"
+  tags: always
+
+- name: Set containerd command from cluster config
+  ignore_errors: yes
+  set_fact:
+    ctr_binary: "{{ container_runtime.binaries[cluster_type].ctr }}"
+    ctr_socket: "{{ container_runtime.sockets[cluster_type] }}"
+    ctr_namespace: "{{ container_runtime.namespace }}"
+
+- name: Load App Setup/configuration data
+  include_vars:
+    file: host_vars/app_config.yaml
+
+- name: Set ingress host ip from external load balancer
+  set_fact:
+    ingress_ip: "{{ external_fqdn }}"
+  when:
+    - external_lb | default(false) | bool
+
+
+- name: Set ingress host ip for HA cluster
+  set_fact:
+    ingress_ip: "{{ ha_rke2_vip_address }}"
+  when:
+    - not (external_lb | default(false) | bool)
+    - hostvars[groups['primary_master_node_group'][0]].ha_rke2 | bool
+    - groups['secondary_master_node_group'] | default([]) | length > 0
+
+
+- name: Set ingress host ip for single master cluster
+  set_fact:
+    ingress_ip: "{{ hostvars[groups['primary_master_node_group'][0]].ip }}"
+  when:
+    - not (external_lb | default(false) | bool)
+    - not hostvars[groups['primary_master_node_group'][0]].ha_rke2 | bool
+
+
+- name: Prepare image dictionary for docker registry
+  set_fact:
+    docker_repo: "{{ ext_doc_reg_dns }}"
+    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+
+- name: Register ansible user id
+  shell: "id -u {{ ansible_user }}"
+  register: user_id
+
+- debug:
+    msg: "user_id -> {{user_id }}"
+
+- name: set ansible userid
+  set_fact:
+    ansible_user_id: "{{ user_id }}"
+
+- name: Register ansible group id
+  shell: "id -g {{ ansible_user }}"
+  register: group_id
+
+- debug:
+    msg: "group_id -> {{group_id }}"
+
+- name: set ansible groupid
+  set_fact:
+    ansible_group_id: "{{ group_id }}"

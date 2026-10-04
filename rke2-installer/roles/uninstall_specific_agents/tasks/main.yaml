@@ -1,0 +1,4 @@
+# file: roles/uninstall_specifc_agents/tasks/main.yml
+#
+- name: uninstall the specific agent nodes
+  import_tasks: uninstall_specific_agents.yaml

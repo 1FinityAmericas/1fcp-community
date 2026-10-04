@@ -1,0 +1,35 @@
+{{- if and .Values.minio.volumePaths (gt (len .Values.minio.volumePaths) 0) }}
+  {{- $max := len .Values.minio.volumePaths }}
+  {{- $count := int .Values.masterNodes }}
+  {{- if gt $count $max }}
+    {{- $count = $max }}
+  {{- end }}
+  {{- range $i, $pv := (slice .Values.minio.volumePaths 0 $count) }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  #name: {{ $pv.pvName }}
+  name: minio-pv-{{ $i }}
+spec:
+  capacity:
+    storage: "{{ $.Values.minio.storageSize }}"
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: "{{ $.Values.minio.storageClass }}"
+  persistentVolumeReclaimPolicy: Delete
+  local:
+    path: "{{ $pv.path }}"
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ $pv.node }}
+---
+  {{- end }}
+{{- else }}
+{{- fail "values.yaml must define 'minio.volumePaths' as a non-empty list" }}
+{{- end }}

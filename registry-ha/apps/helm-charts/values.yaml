@@ -1,0 +1,103 @@
+# Namespace (if empty, uses release namespace)
+namespace: "registry"
+
+# Node affinity configuration - defaults to master control-plane
+masterNodes: 3
+nodeAffinity:
+  enabled: true
+  key: "node-role.kubernetes.io/control-plane"
+  operator: "Exists"
+
+securityContextEnabled: true
+
+securityGroup:
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+
+minio:
+  replicaCount: 3
+  image:
+    repository: quay.io/minio/minio
+    tag: RELEASE.2025-09-07T16-13-09Z
+  storageClass: local-store
+  storageSize: 100Gi
+  # If you want Helm to generate PVs automatically, leave volumePaths empty and set createPVs=true
+  basePath: /var/lib/minio-vol
+  volumePaths:
+    - pvName: minio-pv-0
+      path: /var/lib/minio-vol/
+      node: master1
+    - pvName: minio-pv-1
+      path: /var/lib/minio-vol/
+      node: master2
+    - pvName: minio-pv-2
+      path: /var/lib/minio-vol/
+      node: master3
+
+# Registry settings
+registry:
+  image:
+    repository: docker.io/library/registry
+    tag: 3.0.0
+  bucket: docker-registry
+  #endpoint: "http://minio-lb.registry.svc.cluster.local:9000"
+  region: us-east-1
+  logLevel: info
+
+# Credentials - chart can create secret by default
+credentials:
+  create: true
+  name: minio-creds
+  accessKey: minioadmin
+  secretKey: minioadmin123
+  httpSecret: d8c5d57c8e9b28d49f7a4a12253e4c36a8c52d44a4e3f79be0f68ef606a9c98e
+
+# StorageClass / PV creation
+createStorageClass: true
+createPVs: true
+
+# Bucket init job
+bucketInit:
+  enabled: true
+  backoffLimit: 3
+
+# TLS and CA distribution
+tls:
+  enabled: false           # set true to enable registry TLS handling, but not required as ingress object has explicit tls secret
+  source: "secret"         # "secret" or "minio"
+  secretName: registry-tls
+  bucketPath: certs/
+  ca:
+    distributeToNodes: false
+    source: "minio"        # "minio" or "secret"
+    secretName: registry-ca
+    bucketFile: certs/ca.crt
+
+
+# Proxy Registry-inside dev like FNCs' ITG Artifactory if enabled/disabled
+proxy_reg:
+  enabled: false
+
+# Ingress
+ingress:
+  enabled: true
+  host: fnc.fujitsu.reg
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+minioConsoleIngress:
+  enabled: false
+  host: minio.10.156.185.75.nip.io
+  tls: false
+  tlsSecret: minio-console-tls
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"

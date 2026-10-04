@@ -1,0 +1,2 @@
+- name: cleanup for zookeeper.
+  import_tasks: cleanup.yaml

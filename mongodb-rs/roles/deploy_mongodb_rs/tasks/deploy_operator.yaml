@@ -1,0 +1,67 @@
+---
+# PSMDB OPERATOR DEPLOYMENT
+# CRDs are bundled in apps/helm-charts/mongodb-rs-operator/crds/ and installed
+# automatically by Helm before operator templates during helm install.
+
+- name: Create percona-operator namespace
+  shell: "kubectl create ns {{ mongodb_rs.psmdb_operator.namespace }}"
+  ignore_errors: true
+
+- name: Install PSMDB CRDs
+  shell: "kubectl create -f {{ playbook_dir }}/apps/helm-charts/{{ app_name }}-operator/crds/{{ item }}"
+  loop:
+    - perconaservermongodbs.yaml
+    - perconaservermongodbbackups.yaml
+    - perconaservermongodbrestores.yaml
+  ignore_errors: true
+
+- name: Deploy PSMDB Operator
+  shell: >
+    helm upgrade --install {{ app_name }}-operator
+    {{ playbook_dir }}/apps/helm-charts/{{ app_name }}-operator
+    -n {{ mongodb_rs.psmdb_operator.namespace }}
+    --set replicaCount={{ mongodb_rs.psmdb_operator.replicaCount }}
+    --set imageRegistry={{ registry }}
+    --set image.repository={{ mongodb_rs.psmdb_operator.image.repository }}
+    --set image.tag={{ mongodb_rs.psmdb_operator.image.tag }}
+    --set watchNamespace={{ mongodb_rs.psmdb_operator.watchNamespaces }}
+    --set env.resyncPeriod={{ mongodb_rs.psmdb_operator.env.resyncPeriod }}
+
+- name: Wait for PSMDB Operator pods to be Running and Ready
+  shell: "kubectl get pods -n {{ mongodb_rs.psmdb_operator.namespace }} -l app={{ app_name }} --no-headers | awk '{ print $2, $3}'"
+  register: operator_pod_status
+  until: >
+    (operator_pod_status.stdout_lines | length > 0) and
+    (
+      operator_pod_status.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (operator_pod_status.stdout_lines | length)
+    )
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Wait for CRDs to be established
+  shell: >
+    kubectl get crd {{ item }}
+    -o jsonpath='{.status.conditions[?(@.type=="Established")].status}'
+  register: crd_status
+  until: crd_status.stdout == "True"
+  retries: 18
+  delay: 10
+  changed_when: false
+  loop:
+    - perconaservermongodbs.psmdb.percona.com
+    - perconaservermongodbbackups.psmdb.percona.com
+    - perconaservermongodbrestores.psmdb.percona.com
+
+- name: Verify CRD installation
+  shell: "kubectl get crd {{ item }} -o name"
+  register: crd_verify
+  changed_when: false
+  failed_when: crd_verify.rc != 0
+  loop:
+    - perconaservermongodbs.psmdb.percona.com
+    - perconaservermongodbbackups.psmdb.percona.com
+    - perconaservermongodbrestores.psmdb.percona.com

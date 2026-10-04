@@ -1,0 +1,3 @@
+#
+- name: cleaning cassandra
+  import_tasks: cleanup_cassandra.yaml

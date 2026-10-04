@@ -1,0 +1,3 @@
+---
+- name: deploying the main task external registry certificates
+  import_tasks: deploy_reg_certs.yaml

@@ -1,0 +1,102 @@
+{{- if .Values.bucketInit.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: {{ include "registry.namespace" . }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 60
+  backoffLimit: {{ .Values.bucketInit.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        job: minio-bucket-init
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: init-minio-bucket
+        image: {{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            set -o pipefail
+
+            check_url() {
+              url=$1
+              echo " Checking $url ..."
+              until curl -sf "$url" >/dev/null 2>&1; do
+                echo "Waiting for $url..."
+                sleep 5
+              done
+              echo "  $url is ready"
+            }
+
+            echo "Waiting for all MinIO pods to become ready..."
+            replicas={{ .Values.minio.replicaCount | default 1 | int }}            
+            ns="{{ include "registry.namespace" . }}"
+            for i in $(seq 0 $(( replicas - 1))); do
+                check_url "http://minio-${i}.minio.${ns}.svc.cluster.local:9000/minio/health/ready"
+            done
+            # Checking Minio-cluster-health is ready
+            check_url "http://minio-lb.${ns}.svc.cluster.local:9000/minio/health/cluster"
+            echo "MinIO-cluster healthy — configuring mc alias..."
+            echo "mc alias set myminio http://minio-lb.${ns}.svc.cluster.local:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}"
+            mc alias set myminio http://minio-lb.${ns}.svc.cluster.local:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
+
+            # Exit if alias detects a persistent bucket, else create it
+            if  mc ls myminio/{{ .Values.registry.bucket }} >/dev/null 2>&1; then
+              echo "Bucket already exists."
+              exit 0
+            else
+              #create bucket
+              #check_url "http://minio-lb.${ns}.svc.cluster.local:9000/minio/health/ready"
+              #echo "All MinIO endpoints healthy — configuring mc alias..."
+              #echo "mc alias set myminio http://minio-lb.${ns}.svc.cluster.local:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}"
+              #mc alias set myminio http://minio-lb.${ns}.svc.cluster.local:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
+              mc mb myminio/{{ .Values.registry.bucket }}
+              echo "Bucket Initialized !"
+            fi
+
+        env:
+          - name: MINIO_ROOT_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.name }}
+                key: accesskey
+          - name: MINIO_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.name }}
+                key: secretkey
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/unschedulable"
+          operator: "Exists"
+          effect: "NoSchedule"
+      affinity:
+         nodeAffinity:
+           requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+             - matchExpressions:
+                - key: "node-role.kubernetes.io/control-plane"
+                  operator: Exists
+{{- end }}

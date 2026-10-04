@@ -1,0 +1,21 @@
+---
+# image & temporary folder cleanups
+- name: Cleanup temporary cic-images folder on all nodes
+  become: yes
+  file:
+    path: "{{ ansible_env.HOME }}/cic-images"
+    state: absent
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubenodes'] }}"
+
+- name: Wait until cic-images folder is removed on all nodes
+  become: yes
+  delegate_to: "{{ item }}"
+  stat:
+    path: "{{ ansible_env.HOME }}/cic-images"
+  register: cic_images_status
+  until: not cic_images_status.stat.exists
+  retries: 6
+  delay: 10
+  changed_when: false
+  loop: "{{ groups['kubemasters'] }}"

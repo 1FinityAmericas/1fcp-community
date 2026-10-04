@@ -1,0 +1,20 @@
+---
+#Installing helm package
+- name: untar the helm3 package
+  shell: "tar -zxvf {{ playbook_dir }}/apps/images/helm/helm-v3.15.1-linux-amd64.tar.gz  -C {{ playbook_dir }}"
+
+- name: copy helm binary to all masters
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/linux-amd64/helm"
+    dest: "/usr/local/bin/helm"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubemasters'] }}"
+
+- name: 'Update {{ playbook_dir }}/linux-amd64/helm file mode'
+  become: yes
+  shell: |
+    chown '{{ansible_user}}:{{ansible_group}}' /usr/local/bin/helm
+    chmod 755 /usr/local/bin/helm
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubemasters'] }}"

@@ -1,0 +1,9 @@
+---
+#
+- name: check if the interface contains the floating ip
+  shell: "/usr/sbin/ip a list {{ ha_rke2_interface }}"
+  register: iface
+  until: ha_rke2_vip_address in iface.stdout
+  retries: 10
+  delay: 5
+  ignore_errors: yes

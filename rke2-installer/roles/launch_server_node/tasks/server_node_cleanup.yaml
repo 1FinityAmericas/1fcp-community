@@ -1,0 +1,30 @@
+---
+# Task cleaning the server nodes before setup
+
+- name: Check if rke2-killall.sh exists
+  stat:
+    path: /usr/local/bin/rke2-killall.sh
+  register: rke2_killall_check
+
+- name: running rke2-killall.sh script if it exists
+  become: yes
+  shell: sh /usr/local/bin/rke2-killall.sh
+  when: rke2_killall_check.stat.exists
+
+- name: waiting for rke2-killall.sh script to run
+  pause:
+    seconds: 30
+  when: rke2_killall_check.stat.exists
+
+- name: Deleting rancher from /var/lib folder
+  become: yes
+  file:
+    path: /var/lib/rancher/
+    state: absent
+
+- name: Deleting rancher from /etc folder
+  become: yes
+  file:
+    path: /etc/rancher/
+    state: absent
+

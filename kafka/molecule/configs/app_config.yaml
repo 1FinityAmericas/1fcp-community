@@ -1,0 +1,89 @@
+kafka:
+  app_name: kafka
+  namespace: ndl
+  cluster:
+    #number of brokers
+    replicaCount: 3
+  busybox_init_container:
+    image:
+      repository: busybox_fcp
+      tag: 1.0
+      pull_policy: IfNotPresent
+      enabled: true
+  prometheus_container:
+    image:
+      repository: prometheus-jmx-exporter-kubernetes
+      tag: 0.3.1
+      pull_policy: IfNotPresent
+      enabled: false
+  kafka_container:
+    image:
+      repository: kafka
+      tag: 7.9.2
+      pull_policy: IfNotPresent
+      enable: true
+  resources:
+    limits:
+      cpu: 500m
+      memory: 2Gi
+    requests:
+      cpu: 300m
+      memory: 1.5Gi
+  pod_management_policy: OrderedReady
+  update_strategy: RollingUpdate
+  configuration_overrides:
+    default.replication.factor: '3'
+    num.partitions: '8'
+    offsets.topic.replication.factor: '3'
+    message.max.bytes: '10000000'
+    acks: '-1'
+    max.request.size: '10000000'
+    max.block.ms: '5000'
+    max.in.flight.requests.per.connection: '1'
+    producer.purgatory.purge.interval.requests: '10000'
+    replica.lag.time.max.ms: '10000'
+    zookeeper.session.timeout.ms: '30000'
+    delete.topic.enable: 'false'
+    log.roll.hours: '24'
+    log.retention.hours: '24'
+  heap_options: '-Xms1G -Xmx2G'
+  insync:
+    replicas: '1'
+  retention: { bytes: '536870912', ms: '259200000' }
+  roll: { ms: '259200000' }
+  segment: { bytes: '1073741824' }
+  node_affinity:
+    enabled: false
+  nodeport:
+    enabled: false
+    service_port: 9092
+    first_listener_port: 31090
+  persistence:
+    enabled: true
+    size: 5Gi
+    storage_class: "rancher-dynamic-local-path"
+  security_context:
+    run_as_group: 1000
+    run_as_user: 1000
+  security_group:
+    fs_group: 1000
+  jmx:
+    port: 5555
+  prometheus:
+    enabled: false
+    port: 5556
+    resources: { }
+  zookeeper:
+    # kubectl get svc name
+    service_name: zookeeper
+    name: zookeeper
+    port: 2181
+    namespace: ndl
+    svc: svc.cluster.local
+    prometheus:
+      enabled: false
+
+external_registry:
+  auth: false
+  username: automation
+  password: automation

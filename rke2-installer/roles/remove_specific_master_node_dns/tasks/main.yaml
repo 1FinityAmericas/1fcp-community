@@ -1,0 +1,4 @@
+# file: roles/remove_specific_master_node_dns/tasks/main.yml
+#
+- name: remove specific node from /etc/hosts
+  import_tasks: remove_specific_master_node_dns.yaml

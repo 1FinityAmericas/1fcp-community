@@ -1,0 +1,4 @@
+# file: roles/ssh_connection_check/tasks/main.yml
+
+- name: SSH connection check
+  import_tasks: ssh_connection_check.yaml

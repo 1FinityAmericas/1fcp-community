@@ -1,0 +1,9 @@
+---
+# Play for verifying cluster version
+- hosts: kubenodes
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+  roles:
+    - verify_cluster_version

@@ -1,0 +1,7 @@
+---
+# Play for uninstalling the rke2 on server nodes
+- hosts: kubemasters
+  gather_facts: no
+
+  roles:
+    - uninstall_all_server_nodes

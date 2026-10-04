@@ -1,0 +1,142 @@
+---
+# Tasks for checking RKE2 pod statuses
+#
+- name: Retrieve Nodes count
+  shell: "kubectl get nodes --no-headers |awk '{print $1}'"
+  register: total_nodes
+
+- name: Retrieve masters count
+  shell: "kubectl get nodes -l node-role.kubernetes.io/control-plane --no-headers |awk '{print $1}'"
+  register: master_nodes
+
+- set_fact:
+    nodes_count: "{{ total_nodes.stdout_lines |length}}"
+    master_count: "{{ master_nodes.stdout_lines |length}}"
+
+- name: Wait for calico-node pods to be in Running state
+  shell: kubectl get pods -l app.kubernetes.io/name=calico-node -n calico-system  --no-headers |awk '{print $2, $3}'
+  register: calico_pod_statuses
+  until: >
+    (calico_pod_statuses.stdout_lines | length == 0) or
+    (
+      calico_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (calico_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for etcd pods to be in Running state
+  shell: kubectl get pods -n kube-system -l component=etcd  --no-headers |awk '{print $2, $3}'
+  register: etcd_pod_statuses
+  until: >
+    (etcd_pod_statuses.stdout_lines | length == 0) or
+    (
+      etcd_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (etcd_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for kube-apiserver pods to be in Running state
+  shell: kubectl get pods -n kube-system -l component=kube-apiserver  --no-headers |awk '{print $2, $3}'
+  register: api_pod_statuses
+  until: >
+    (api_pod_statuses.stdout_lines | length == 0) or
+    (
+      api_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (api_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for kube-scheduler pods to be in Running state
+  shell: kubectl get pods -n kube-system -l 'component=kube-scheduler' --no-headers |awk '{print $2, $3}'
+  register: sched_pod_statuses
+  until: >
+    (sched_pod_statuses.stdout_lines | length == 0) or
+    (
+      sched_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (sched_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for kube-controller-manager pods to be in Running state
+  shell: kubectl get pods -n kube-system -l component=kube-controller-manager --no-headers |awk '{print $2, $3}'
+  register: cont_mgr_pod_statuses
+  until: >
+    (cont_mgr_pod_statuses.stdout_lines | length == 0) or
+    (
+      cont_mgr_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (cont_mgr_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for kube-proxy pods to be in Running state
+  shell: kubectl get pods -n kube-system -l component=kube-proxy --no-headers |awk '{print $2, $3}'
+  register: proxy_pod_statuses
+  until: >
+    (proxy_pod_statuses.stdout_lines | length == 0) or
+    (
+      proxy_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (proxy_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for the first core/kube-dns pods to be in Running state
+  shell: kubectl get pods -n kube-system -l k8s-app=kube-dns --no-headers |awk '{print $2, $3}'
+  register: dns_pod_statuses
+  until: >
+    (dns_pod_statuses.stdout_lines | length == 0) or
+    (
+      dns_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (dns_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait for ingress pods to be in Running state
+  shell: kubectl get pods -n kube-system -l app.kubernetes.io/component=controller --no-headers |awk '{print $2, $3}'
+  register: ing_pod_statuses
+  until: >
+    (ing_pod_statuses.stdout_lines | length == 0) or
+    (
+      ing_pod_statuses.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (ing_pod_statuses.stdout_lines | length)
+    )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: "Summary pod tests-Failures"
+  debug:
+    msg: "Calico: {{ calico_pod_statuses.failed }} \n Etcd: {{  etcd_pod_statuses.failed  }} \n Api-Server: {{ api_pod_statuses.failed }} \n Scheduler: {{ sched_pod_statuses.failed }} \n Controller_Mgr:{{  cont_mgr_pod_statuses.failed  }} \n Kube-Proxy:{{ proxy_pod_statuses.failed  }} \n Kube-DNS:{{  dns_pod_statuses.failed  }} \n Ingress:{{  ing_pod_statuses.failed  }}"
+
+- fail:
+    msg: "At least one/more tasks/tests failed above. Hence aborting!"
+  when: calico_pod_statuses.failed or etcd_pod_statuses.failed or api_pod_statuses.failed or sched_pod_statuses.failed or  cont_mgr_pod_statuses.failed or proxy_pod_statuses.failed or  dns_pod_statuses.failed or ing_pod_statuses.failed

@@ -1,0 +1,55 @@
+---
+#
+#-----------------#mongodb_cleanup#-------------------------------
+#
+
+- name: Delete PSMDB Cluster helm installation
+  shell: "helm delete {{ app_name }} -n {{ mongodb_rs.namespace }}"
+  ignore_errors: true
+
+- name: Remove finalizers from PerconaServerMongoDB custom resource
+  shell: "kubectl patch perconaservermongodb {{ app_name }} -n {{ mongodb_rs.namespace }} -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge"
+  ignore_errors: true
+
+- name: Delete PerconaServerMongoDB custom resource
+  shell: "kubectl delete perconaservermongodb {{ app_name }} -n {{ mongodb_rs.namespace }} --force --grace-period=0"
+  ignore_errors: true
+
+- name: Force delete PSMDB Cluster pods
+  shell: "kubectl get pods -n {{ mongodb_rs.namespace }} --no-headers -l app={{ app_name }} | awk '{print $1}' | xargs -r kubectl delete pod -n {{ mongodb_rs.namespace }} --force --grace-period=0"
+  ignore_errors: true
+
+- name: Delete PSMDB Cluster PVCs
+  shell: "kubectl delete pvc -l app={{ app_name }} -n {{ mongodb_rs.namespace }}"
+  ignore_errors: true
+
+- name: Delete all MongoDB-related secrets
+  shell: "kubectl delete secrets -n {{ mongodb_rs.namespace }} --ignore-not-found $(kubectl get secrets -n {{ mongodb_rs.namespace }} -o name | grep {{ app_name }} | cut -d/ -f2)"
+  ignore_errors: true
+
+- name: Delete PSMDB Operator helm installation
+  shell: "helm delete {{ app_name }}-operator -n {{ mongodb_rs.psmdb_operator.namespace }}"
+  ignore_errors: true
+
+- name: Ensure the PSMDB Operator pods are deleted
+  shell: "kubectl get pods -n {{ mongodb_rs.psmdb_operator.namespace }} --no-headers -l app={{ app_name }} || true"
+  register: operator_pod_status
+  retries: 18
+  delay: 10
+  until: operator_pod_status.stdout | length == 0
+
+- name: Ensure the PSMDB Cluster pods are deleted
+  shell: "kubectl get pods -n {{ mongodb_rs.namespace }} --no-headers -l app={{ app_name }} || true"
+  register: cluster_pod_status
+  retries: 18
+  delay: 10
+  until: cluster_pod_status.stdout | length == 0
+
+- name: Delete PSMDB CRDs manually (if required)
+  shell: "kubectl delete crd perconaservermongodbs.psmdb.percona.com perconaservermongodbbackups.psmdb.percona.com perconaservermongodbrestores.psmdb.percona.com"
+  ignore_errors: true
+
+- name: Confirm that all PSMDB components have been deleted
+  debug:
+    msg: "All PSMDB components (cluster, operator, CRDs) in the {{ mongodb_rs.namespace }} namespace have been successfully deleted."
+  when: cluster_pod_status.stdout | length == 0 and operator_pod_status.stdout | length == 0

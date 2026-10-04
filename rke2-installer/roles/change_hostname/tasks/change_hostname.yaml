@@ -1,0 +1,59 @@
+---
+#file roles/set-hostname/tasks/set-hostname.yaml
+
+- name: Remove entry from /etc/hosts for each kubenode
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '^.*{{ hostvars[item].host }}.*#1fcp$'
+  loop: "{{ groups['kubenodes'] }}"
+  ignore_errors: yes
+  when:
+    - "'rke2' in ansible_run_tags"
+    - hostvars[item].host is defined
+
+- name: Remove entry from /etc/hosts for new_nodes
+  delegate_to: "{{ item }}"
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '^.*{{ hostvars[node].host }}.*#1fcp$'
+  loop: "{{ groups['new_nodes'] }}"
+  loop_control:
+    loop_var: item
+  vars:
+    node: "{{ inventory_hostname }}"
+  ignore_errors: yes
+  when:
+    - "'add-node' in ansible_run_tags"
+    - hostvars[inventory_hostname].host is defined
+
+- name: change the hosts file in all the nodes.
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['ip'] }}\t{{ hostvars[item]['host'] }} #1fcp"
+  with_items: "{{groups['kubenodes']}}"
+
+- name: SSH KeyGen command
+  shell: >
+    ssh-keygen -q -b 2048 -t rsa -N "" -C "creating SSH" -f ~/.ssh/id_rsa
+    creates="~/.ssh/id_rsa"
+
+- name: Fetch the keyfile from the node to master
+  fetch:
+    src: "~/.ssh/id_rsa.pub"
+    dest: "buffer/{{ip}}-id_rsa.pub"
+    flat: yes
+
+- name: Copy the key add to authorized_keys using Ansible module
+  authorized_key:
+    user: '{{ hostvars[groups["primary_master_node_group"][0]]["ansible_env"]["USER"] }}'
+    state: present
+    key: "{{ lookup('file','buffer/{{hostvars[item][\"ip\"]}}-id_rsa.pub')}}"
+  with_items:
+    - "{{ groups['kubenodes'] }}"
+
+

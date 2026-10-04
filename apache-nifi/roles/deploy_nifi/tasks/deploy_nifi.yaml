@@ -1,0 +1,533 @@
+---
+#
+- name: Create NiFi namespace if not exists
+  shell: |
+    set -e
+    kubectl get namespace "{{ apache_nifi.namespace }}" >/dev/null 2>&1 \
+    || kubectl create namespace "{{ apache_nifi.namespace }}"
+
+# ==============================================================================
+# Ingress Controller Validation
+# ==============================================================================
+- name: Get deployed ingress controller from IngressClass
+  shell: kubectl get ingressclass --no-headers | awk '{print $1}'
+  register: deployed_controller
+  changed_when: false
+
+- name: Fail if no IngressClass exists in cluster
+  fail:
+    msg: "No IngressClass available in the cluster. Deployment cannot continue."
+  when: deployed_controller.stdout | trim | length == 0
+
+- name: Check if configured ingress controller exists
+  shell: kubectl get ingressclass {{ apache_nifi.ingress_controller.name }}
+  register: controller_check
+  failed_when: false
+  changed_when: false
+
+- name: Fail if configured ingress controller does not exist
+  fail:
+    msg: >-
+      Configured ingress controller '{{ apache_nifi.ingress_controller.name }}' not found.
+      Available IngressClass: {{ deployed_controller.stdout | trim }}.
+      Please update ingress_controller in app_config.yaml.
+  when: controller_check.rc != 0
+
+# ==============================================================================
+# Shared Gateway Validation (for Traefik)
+# ==============================================================================
+- name: Check if Shared Gateway exists for traefik
+  shell: kubectl get gateway {{ apache_nifi.shared_gateway.name }} -n {{ apache_nifi.shared_gateway.namespace }}
+  register: gateway_check
+  failed_when: false
+  changed_when: false
+  when: apache_nifi.ingress_controller.name == 'traefik'
+
+- name: Fail if Gateway does not exist for traefik controller
+  fail:
+    msg: >-
+      Gateway '{{ apache_nifi.shared_gateway.name }}' not found in namespace '{{ apache_nifi.shared_gateway.namespace }}'.
+      Please ensure the Gateway is deployed before installing apache-nifi with traefik controller.
+  when:
+    - apache_nifi.ingress_controller.name == 'traefik'
+    - gateway_check.rc != 0
+
+
+
+- name: Copy start.sh to apache-nifi helm charts location
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/roles/deploy_nifi/files/start.sh"
+    dest: "{{ playbook_dir }}/apps/helm-charts/files/start.sh"
+    mode: '0755'
+ 
+- name: Override NiFi start.sh replica loop using replicaCount
+  become: yes
+  shell:  sed -i "s/\$(seq 0 replicaCount)/\$(seq 0 {{ apache_nifi.replicaCount -1 }} )/"  {{ playbook_dir }}/apps/helm-charts/files/start.sh
+
+- name: Get list of StorageClasses
+  shell: kubectl get storageclass --no-headers
+  register: sc_list
+  changed_when: false
+
+- name: Fail if no StorageClass exists in cluster
+  fail:
+    msg: "No StorageClass available in the cluster. Apache nifi deployment cannot continue."
+  when: sc_list.stdout | trim | length == 0
+
+- name: Check if configured StorageClass exists
+  shell: >
+    kubectl get storageclass {{ apache_nifi.persistence.storageClassName }}
+    --ignore-not-found
+    -o name
+  register: sc_check
+  changed_when: false
+
+- name: Get default StorageClass if configured one does not exist
+  shell: >
+    kubectl get storageclass
+    -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
+  register: default_sc
+  changed_when: false
+  when: sc_check.stdout | trim == ""
+
+- name: Fail if neither configured nor default StorageClass exists
+  fail:
+    msg: >-
+      Configured StorageClass '{{ apache_nifi.persistence.storageClassName }}'
+      does not exist and no default StorageClass is defined in the cluster.
+      Helm deployment aborted.
+  when:
+    - sc_check.stdout | trim == ""
+    - default_sc.stdout | trim == ""
+
+- name: Resolve StorageClass to use
+  set_fact:
+    resolved_storage_class: >-
+      {{
+        apache_nifi.persistence.storageClassName
+        if sc_check.stdout | trim != ""
+        else default_sc.stdout | trim
+      }}
+
+- name: Show resolved StorageClass
+  debug:
+    msg: "Using StorageClass: {{ resolved_storage_class }}"
+
+- name: Ensure NiFi custom conf directory exists
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/conf
+    state: directory
+    mode: '0755'
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customConf.enabled | bool  
+
+- name: Check if custom-conf directory exists on all worker nodes
+  stat:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/conf
+  register: custom_conf_dir
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when: 
+    - apache_nifi.customConf.enabled | bool
+
+- name: Fail if custom-conf directory does not exist on any worker node
+  fail:
+    msg: "customConf is enabled but directory /var/lib/docker/dynamic-local-path-mounts/nifi/conf does not exist on {{ item.item }}. Please create it and copy your custom configuration files."
+  when:
+    - apache_nifi.customConf.enabled | bool
+    - not item.stat.exists
+  loop: "{{ custom_conf_dir.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Copy NiFi conf tarballs
+  become: yes
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/apps/custom_pkg/conf/"
+    dest: "/var/lib/docker/dynamic-local-path-mounts/nifi/conf/"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customConf.enabled | bool
+
+- name: Find NiFi conf tarballs
+  become: yes
+  ansible.builtin.find:
+    paths: "/var/lib/docker/dynamic-local-path-mounts/nifi/conf/"
+    patterns:
+      - "*.tar"
+      - "*.tar.gz"
+  register: conf_tarballs
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customConf.enabled | bool
+
+- name: Extract NiFi conf tarballs
+  become: yes
+  ansible.builtin.unarchive:
+    src: "{{ item.1.path }}"
+    dest: /var/lib/docker/dynamic-local-path-mounts/nifi/conf/
+    remote_src: yes
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ conf_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customConf.enabled | bool
+      
+- name: Remove NiFi conf tarballs after extraction
+  become: yes
+  ansible.builtin.file:
+    path: "{{ item.1.path }}"
+    state: absent
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ conf_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customConf.enabled | bool
+
+- name: Ensure NiFi custom lib directory exists
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/lib
+    state: directory
+    mode: '0755'
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customLib.enabled | bool
+
+- name: Check if custom-lib directory exists on all worker nodes
+  stat:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/lib
+  register: custom_lib_dir
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when: 
+    - apache_nifi.customLib.enabled | bool
+
+- name: Fail if custom-lib directory does not exist on any worker node
+  fail:
+    msg: "customLib is enabled but directory /var/lib/docker/dynamic-local-path-mounts/nifi/lib does not exist on {{ item.item }}. Please create it and copy your custom library files."
+  when:
+    - apache_nifi.customLib.enabled | bool
+    - not item.stat.exists
+  loop: "{{ custom_lib_dir.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Copy NiFi lib tarballs
+  become: yes
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/apps/custom_pkg/lib/"
+    dest: "/var/lib/docker/dynamic-local-path-mounts/nifi/lib/"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customLib.enabled | bool
+
+- name: Find NiFi lib tarballs
+  become: yes
+  ansible.builtin.find:
+    paths: "/var/lib/docker/dynamic-local-path-mounts/nifi/lib/"
+    patterns:
+      - "*.tar"
+      - "*.tar.gz"
+  register: lib_tarballs
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customLib.enabled | bool
+
+- name: Extract NiFi lib tarballs
+  become: yes
+  ansible.builtin.unarchive:
+    src: "{{ item.1.path }}"
+    dest: /var/lib/docker/dynamic-local-path-mounts/nifi/lib/
+    remote_src: yes
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ lib_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customLib.enabled | bool
+
+- name: Remove NiFi lib tarballs after extraction
+  become: yes
+  ansible.builtin.file:
+    path: "{{ item.1.path }}"
+    state: absent
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ lib_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customLib.enabled | bool      
+
+- name: Ensure NiFi custom extensions directory exists
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/extensions
+    state: directory
+    mode: '0755'
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool  
+
+- name: Check if custom-extensions directory exists on all worker nodes
+  stat:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/extensions
+  register: custom_extensions_dir
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool
+
+- name: Fail if custom-extensions directory does not exist on any worker node
+  fail:
+    msg: >
+      customExtensions is enabled but directory
+      /var/lib/docker/dynamic-local-path-mounts/nifi/extensions
+      does not exist on {{ item.item }}.
+      Please create it and copy your NAR files
+      (e.g., nifi-hadoop-nar-2.7.2.nar) to this directory on all worker nodes.
+  when:
+    - apache_nifi.customExtensions.enabled | bool
+    - not item.stat.exists
+  loop: "{{ custom_extensions_dir.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Copy NiFi extensions tarballs
+  become: yes
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/apps/custom_pkg/extensions/"
+    dest: "/var/lib/docker/dynamic-local-path-mounts/nifi/extensions/"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool
+
+- name: Find NiFi extensions tarballs
+  become: yes
+  ansible.builtin.find:
+    paths: "/var/lib/docker/dynamic-local-path-mounts/nifi/extensions/"
+    patterns:
+      - "*.tar"
+      - "*.tar.gz"
+  register: extensions_tarballs
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool
+      
+- name: Extract NiFi extensions tarballs
+  become: yes
+  ansible.builtin.unarchive:
+    src: "{{ item.1.path }}"
+    dest: /var/lib/docker/dynamic-local-path-mounts/nifi/extensions/
+    remote_src: yes
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ extensions_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool
+
+- name: Remove NiFi extensions tarballs after extraction
+  become: yes
+  ansible.builtin.file:
+    path: "{{ item.1.path }}"
+    state: absent
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ extensions_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.customExtensions.enabled | bool      
+
+- name: Ensure NiFi dpm-scripts directory exists
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts
+    state: directory
+    mode: '0755'
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.dpmScripts.enabled | bool
+
+- name: Check if dpm-scripts directory exists on all worker nodes
+  stat:
+    path: /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts
+  register: dpm_scripts_dir
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when: 
+    - apache_nifi.dpmScripts.enabled | bool
+
+- name: Fail if dpm-scripts directory does not exist on any worker node
+  fail:
+    msg: "dpmScripts is enabled but directory /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts does not exist on {{ item.item }}. Please create it and copy your DPM script files."
+  when:
+    - apache_nifi.dpmScripts.enabled | bool
+    - not item.stat.exists
+  loop: "{{ dpm_scripts_dir.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Copy NiFi dpm-scripts tarballs
+  become: yes
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/apps/custom_pkg/dpm-scripts/"
+    dest: "/var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts/"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.dpmScripts.enabled | bool    
+
+- name: Find NiFi dpm-scripts tarballs
+  become: yes
+  ansible.builtin.find:
+    paths: "/var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts/"
+    patterns:
+      - "*.tar"
+      - "*.tar.gz"
+  register: dpm_tarballs
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] }}"
+  when:
+    - apache_nifi.dpmScripts.enabled | bool
+
+- name: Extract NiFi dpm-scripts tarballs
+  become: yes
+  ansible.builtin.unarchive:
+    src: "{{ item.1.path }}"
+    dest: /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts/
+    remote_src: yes
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ dpm_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.dpmScripts.enabled | bool
+
+- name: Remove NiFi dpm-scripts tarballs after extraction
+  become: yes
+  ansible.builtin.file:
+    path: "{{ item.1.path }}"
+    state: absent
+  delegate_to: "{{ item.0.item }}"
+  loop: "{{ dpm_tarballs.results | selectattr('matched', 'gt', 0) | subelements('files') }}"
+  loop_control:
+    label: "{{ item.1.path }}"
+  when:
+    - apache_nifi.dpmScripts.enabled | bool      
+
+- name: deploy nifi application
+  shell: |
+    helm upgrade --install nifi --namespace "{{ apache_nifi.namespace }}" \
+      -f "{{ playbook_dir }}/apps/helm-charts/values.yaml" "{{ playbook_dir }}/apps/helm-charts/" \
+      --set auth.mode="{{ apache_nifi.auth.mode }}" \
+      --set replicaCount="{{ apache_nifi.replicaCount }}" \
+      --set auth.username="{{ apache_nifi.auth.username }}" \
+      --set auth.password="{{ apache_nifi.auth.password }}" \
+      --set image.registry="{{ registry }}" \
+      --set image.repository="{{ apache_nifi.image.repository }}" \
+      --set image.tag="{{ apache_nifi.image.tag }}" \
+      --set resources.requests.cpu="{{ apache_nifi.resources.requests.cpu }}" \
+      --set resources.requests.memory="{{ apache_nifi.resources.requests.memory }}" \
+      --set resources.limits.cpu="{{ apache_nifi.resources.limits.cpu }}" \
+      --set resources.limits.memory="{{ apache_nifi.resources.limits.memory }}" \
+      --set jvm.xms="{{ apache_nifi.jvm.xms }}" \
+      --set jvm.xmx="{{ apache_nifi.jvm.xmx }}" \
+      --set jvm.extra="{{ apache_nifi.jvm.extra }}" \
+      --set ingressController.name={{ apache_nifi.ingress_controller.name }} \
+      --set ingress.enabled={{ apache_nifi.ingress.enabled }} \
+      --set ingress.ip="{{ ingress_host }}" \
+      {% if apache_nifi.ingress_controller.name == 'nginx' %}
+      --set ingress.hosts[0].host="{{ ingress_host }}" \
+      --set ingress.tls[0].hosts[0]="{{ ingress_host }}" \
+      {% endif %}
+      {% if apache_nifi.ingress_controller.name == 'traefik' %}
+      --set shared_gateway.name={{ apache_nifi.shared_gateway.name }} \
+      --set shared_gateway.namespace={{ apache_nifi.shared_gateway.namespace }} \
+      --set shared_gateway.hostname="{{ ingress_host }}" \
+      --set ingressController.localCert={{ apache_nifi.ingress_controller.localCert }} \
+      {% endif %}
+      --set customConf.enabled={{ apache_nifi.customConf.enabled }} \
+      --set customConf.storageSize={{ apache_nifi.customConf.storageSize }} \
+      --set customConf.hostPath={{ apache_nifi.customConf.hostPath }} \
+      --set customLib.enabled={{ apache_nifi.customLib.enabled }} \
+      --set customLib.storageSize={{ apache_nifi.customLib.storageSize }} \
+      --set customLib.hostPath={{ apache_nifi.customLib.hostPath }} \
+      --set customExtensions.enabled={{ apache_nifi.customExtensions.enabled }} \
+      --set customExtensions.storageSize={{ apache_nifi.customExtensions.storageSize }} \
+      --set customExtensions.hostPath={{ apache_nifi.customExtensions.hostPath }} \
+      --set dpmScripts.enabled={{ apache_nifi.dpmScripts.enabled }} \
+      --set dpmScripts.storageSize={{ apache_nifi.dpmScripts.storageSize }} \
+      --set dpmScripts.hostPath={{ apache_nifi.dpmScripts.hostPath }} \
+      --set securityContext.runAsUser="{{ apache_nifi.securityContext.runAsUser }}" \
+      --set securityContext.runAsGroup="{{ apache_nifi.securityContext.runAsGroup }}" \
+      --set securityContext.fsGroup="{{ apache_nifi.securityContext.runAsGroup }}" \
+      --set nifiWebProxyHost="{{ ingress_host }}" \
+      --set persistence.enabled="{{ apache_nifi.persistence.enabled }}" \
+      --set persistence.size="{{ apache_nifi.persistence.size }}" \
+      --set persistence.storageClassName="{{ resolved_storage_class }}" \
+      --set securityContext.seccompProfile.type="{{ apache_nifi.securityContext.seccompProfile.type }}" \
+      --set properties.cluster.nodeReadTimeout="{{ apache_nifi.properties.cluster.nodeReadTimeout }}" \
+      --set properties.cluster.nodeConnectionTimeout="{{ apache_nifi.properties.cluster.nodeConnectionTimeout }}" \
+      --set properties.cluster.requestReplicationClaimTimeout="{{ apache_nifi.properties.cluster.requestReplicationClaimTimeout }}" \
+      --set properties.cluster.isNode="{{ apache_nifi.properties.cluster.isNode }}"
+
+
+- name: Wait for all NiFi pods to be Ready
+  shell: >
+    kubectl get pods
+    -n {{ apache_nifi.namespace }}
+    -l app.kubernetes.io/instance=nifi
+    --no-headers
+  register: nifi_pods
+  until:
+    - nifi_pods.stdout_lines | length == apache_nifi.replicaCount | int
+    - (nifi_pods.stdout | regex_findall('1/1') | length) == apache_nifi.replicaCount | int
+    - (nifi_pods.stdout | regex_findall('Running') | length) == apache_nifi.replicaCount | int
+  retries: 60        # 10 minutes
+  delay: 10
+
+
+# ==============================================================================
+# Local Gateway Validation (for Traefik)
+# ==============================================================================
+- name: Check if local gateway exists for traefik
+  shell: kubectl get gateway nifi-gateway -n {{ apache_nifi.namespace }}
+  register: local_gateway_check
+  failed_when: false
+  changed_when: false
+  when:
+    - apache_nifi.ingress_controller.name == 'traefik'
+    - apache_nifi.ingress_controller.localCert | bool
+
+- name: Fail if Local gateway does not exist for traefik controller
+  fail:
+    msg: >-
+      Gateway 'nifi-gateway' not found in namespace '{{ apache_nifi.namespace }}'.
+      Please ensure the Gateway is deployed along with apache-nifi.
+  when:
+    - apache_nifi.ingress_controller.name == 'traefik'
+    - apache_nifi.ingress_controller.localCert | bool
+    - local_gateway_check.rc != 0
+
+
+- debug:
+    msg: "nifi_pods -> {{ nifi_pods }}"
+
+
+
+

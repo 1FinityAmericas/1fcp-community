@@ -1,0 +1,3 @@
+#
+- name: verification of kube VIP for HA RKE2
+  import_tasks: verify_kubevip.yaml

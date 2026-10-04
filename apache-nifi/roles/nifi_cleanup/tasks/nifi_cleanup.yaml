@@ -1,0 +1,75 @@
+---
+#-----------------#apache_nifi_cleanup#-------------------------------
+
+- name: uninstall apache_nifi helm release
+  shell: "helm uninstall nifi -n {{ apache_nifi.namespace }}"
+  ignore_errors: yes
+
+- name: Delete Apache NiFi-related PVCs
+  shell: kubectl delete pvc -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete Apache NiFi-related secrets
+  shell: kubectl delete secret -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete Apache NiFi-related roles
+  shell: kubectl delete role -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete Apache NiFi-related configmaps
+  shell: kubectl delete configmap -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+
+# ------------------------------------------------------------------------------
+# Gateway API / Traefik Resources Cleanup
+# ------------------------------------------------------------------------------
+- name: Delete Apache NiFi HTTPRoutes
+  shell: kubectl delete httproute -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+  when: apache_nifi.ingress_controller.name == 'traefik'
+
+- name: Delete Apache NiFi TraefikService
+  shell: kubectl delete traefikservice -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+  when: apache_nifi.ingress_controller.name == 'traefik'
+
+- name: Delete Apache NiFi Middleware
+  shell: kubectl delete middleware -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+  when: apache_nifi.ingress_controller.name == 'traefik'
+
+- name: Delete Apache NiFi ServersTransport
+  shell: kubectl delete serverstransport -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+  when: apache_nifi.ingress_controller.name == 'traefik'
+
+- name: Delete Apache NiFi-related pods
+  shell: kubectl delete pod -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
+  ignore_errors: true
+
+- name: Clean up the entire NiFi directory
+  become: yes
+  shell: "rm -rf /var/lib/docker/dynamic-local-path-mounts/nifi"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubenodes'] | map('extract', hostvars) | selectattr('group', 'equalto', 'node-config-compute') | map(attribute='inventory_hostname') | list }}"
+  when: k8s_provider == 'rke2'
+
+- name: Ensure Apache NiFi pods are deleted
+  shell: kubectl get pods -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi 
+  register: nifi_pod_status
+  retries: 15
+  delay: 15
+  until: nifi_pod_status.stdout | trim | length == 0
+
+- name: Confirm Apache NiFi cleanup completion (SUCCESS)
+  debug:
+    msg: "All Apache NiFi pods in namespace {{ apache_nifi.namespace }} have been successfully deleted."
+  when: nifi_pod_status.stdout | trim | length == 0
+
+- name: Confirm Apache NiFi cleanup completion (FAILURE)
+  debug:
+    msg: "Apache NiFi cleanup FAILED: Pods still exist in namespace {{ apache_nifi.namespace }}."
+  when: nifi_pod_status.stdout | trim | length > 0  
+
+

@@ -1,0 +1,85 @@
+---
+#
+- name: Preparing arguments for kubevip deployment
+  set_fact:
+     vip_obj: "{{kubevip_images.kubevip}}"
+
+- name: copy kernal module config file '/etc/modules-load.d/ip_vs.conf' to all masters
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/install_kubevip/files/ip_vs.conf"
+    dest: "/etc/modules-load.d/"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubemasters'] }}"
+
+- name: copy kube-vip(tar) to all masters (since registry not available at this stage)
+  copy:
+    src: "{{ playbook_dir }}/apps/images/kube-vip/{{vip_obj.name}}-{{vip_obj.tag}}.tar"
+    dest: "{{ ansible_env.HOME }}/cic-images/"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['kubemasters'] }}"
+
+- name: Check ctr connetion before importing images
+  become: yes
+  shell: /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock --namespace k8s.io info
+  register: result
+  until: result.stderr.find('connection refused') == -1
+  retries: 30
+  delay: 10
+
+- name: load the kube-vip images on all masters using 'ctr' 
+  become: yes
+  shell: |
+     /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io image import  "{{ ansible_env.HOME }}/cic-images/{{vip_obj.name}}-{{vip_obj.tag}}.tar"
+     /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io image tag  {{vip_obj.repo}}/{{vip_obj.name}}:{{vip_obj.tag}}  {{docker_repo}}/{{release_tag}}/{{vip_obj.name}}:{{vip_obj.tag}}
+      /usr/sbin/modprobe -a ip_vs ip_vs_rr
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubemasters'] }}"
+  #when: not docker_registry.proxy | bool
+  ignore_errors: true
+
+- name: helm install or upgrade kube-vip
+  shell: "helm upgrade --install {{vip_obj.name}} -n {{ vip_obj.project }} -f values.yaml . --set image.repository={{ docker_repo }}/{{ release_tag }}/{{vip_obj.name}} --set image.tag={{ vip_obj.tag }} --set config.address={{ ha_rke2_vip_address }} --set env.vip_interface={{ ha_rke2_interface }} --create-namespace"
+  args:
+    chdir: "{{ playbook_dir }}/apps/kube-vip/charts/"
+  register: status 
+
+- name: waiting for 1 minutes for the kube-vip pod deployment
+  pause:
+    minutes: 1
+
+- name: waiting for kube-vip pod to be 'ready' state upto 25 minutes timeout
+  shell: "kubectl get pods -n kube-system --no-headers | grep kube-vip | awk '{ print $2, $3}' "
+  register: kube_vip_pods
+  until: (kube_vip_pods.stdout_lines|length > 0 )  and  ((kube_vip_pods.stdout | regex_findall('1/1') | length) > 0 ) and ((kube_vip_pods.stdout | regex_findall('Running') | length) > 0 )
+  retries: 150
+  delay: 10
+
+- debug:
+    msg: "kube_vip_pods -> {{ kube_vip_pods }}"
+
+- name: Update kube-vip host ip to config.yaml
+  become: yes
+  delegate_to:  "{{ item }}"
+  ansible.builtin.replace:
+    path: /etc/rancher/rke2/config.yaml
+    regexp: '^server: "https://[^"]+:9345"$'
+    replace: 'server: "https://{{ ha_rke2_vip_hostname }}:9345"'
+  with_items:
+    - "{{ groups['secondary_master_node_group'] }}"
+  when: hostvars[groups['primary_master_node_group'][0]].ha_rke2 | bool
+
+
+- name: Ensure rke2-server.service is in a running state on all master nodes
+  become: yes
+  service:
+    name: rke2-server.service
+    state: started
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10
+  loop: "{{ groups['secondary_master_node_group'] }}"
+  delegate_to: "{{ item }}"
+  when: hostvars[groups['primary_master_node_group'][0]].ha_rke2 | bool
+

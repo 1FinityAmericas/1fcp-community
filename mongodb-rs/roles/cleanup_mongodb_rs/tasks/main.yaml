@@ -1,0 +1,2 @@
+- name: cleaning up mongodb project
+  import_tasks:  cleanup_mongodb_rs.yaml

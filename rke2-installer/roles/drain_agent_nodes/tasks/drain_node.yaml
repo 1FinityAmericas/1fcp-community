@@ -1,0 +1,48 @@
+---
+- name: Get the list of nodes
+  shell: "kubectl get nodes --no-headers | awk '$2 !~ /^Ready/ {print $1}'"
+  register: nodes_output
+
+- name: Set a variable for not ready node list
+  set_fact:
+    not_ready_nodes: "{{ nodes_output.stdout_lines }}"
+
+- name: Print non-ready nodes
+  debug:
+    msg: "Nodes with status other than Ready: {{ not_ready_nodes }}"
+
+- name: Drain node
+  command: "kubectl drain {{ node }} --force --grace-period=60 --ignore-daemonsets --delete-emptydir-data --disable-eviction=true"
+  ignore_errors: yes
+  when: node not in not_ready_nodes
+
+- name: Waiting for the pods to be drained from the master node
+  pause:
+    seconds: 300
+  when: node not in not_ready_nodes
+
+- name: Find pods still scheduled on the node
+  shell: kubectl get pods --all-namespaces --field-selector=spec.nodeName={{ node }} --no-headers | awk '{print $1, $2}'
+  register: node_pods
+
+- name: Parse pods and namespaces
+  set_fact:
+    pods_on_node: "{{ node_pods.stdout_lines | map('split', ' ') | list }}"
+  when: node_pods.stdout != ''
+
+- name: Check if drain was successful
+  debug:
+    msg: "There are some pods that are still stuck on the node - {{ node }}"
+  when: pods_on_node | length > 0
+
+- name: Debug pods and namespaces
+  debug:
+    msg: "pod = {{ item[1] }} and namespace = {{ item[0] }}"
+  loop: "{{ pods_on_node }}"
+  when: pods_on_node | length > 0
+
+- name: Force delete pods still scheduled on the node
+  command: "kubectl delete pod {{ item[1] }} --grace-period=0 --force -n {{ item[0] }}"
+  loop: "{{ pods_on_node }}"
+  ignore_errors: yes
+  when: pods_on_node | length > 0

@@ -1,0 +1,47 @@
+---
+# Task cleaning the agent nodes before setup
+- name: Stop rke2-agent if running
+  become: yes
+  systemd:
+    name: rke2-agent
+    state: stopped
+  ignore_errors: yes
+
+- name: Check if rke2-killall.sh exists
+  stat:
+    path: /usr/local/bin/rke2-killall.sh
+  register: rke2_killall_check
+
+- name: running rke2-killall.sh script if it exists
+  become: yes
+  shell: sh /usr/local/bin/rke2-killall.sh
+  when: rke2_killall_check.stat.exists
+
+- name: waiting for rke2-killall.sh script to run
+  pause:
+    seconds: 30
+  when: rke2_killall_check.stat.exists
+
+- name: Deleting rancher from /var/lib folder
+  become: yes
+  file:
+    path: /var/lib/rancher/
+    state: absent
+
+- name: Deleting rancher from /etc folder
+  become: yes
+  file:
+    path: /etc/rancher/
+    state: absent
+
+- name: Delete node object from master
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  shell: "kubectl delete node {{ item }}"
+  loop: "{{ groups['new_nodes'] }}"
+  ignore_errors: yes
+
+- name: Delete the secret of the unreachable nodes
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  shell: "kubectl delete secret {{ item }}.node-password.rke2 -n kube-system"
+  loop: "{{ groups['new_nodes'] }}"
+  ignore_errors: yes

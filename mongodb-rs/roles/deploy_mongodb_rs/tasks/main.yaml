@@ -1,0 +1,5 @@
+---
+
+- name: Deploying mongodb db
+  import_tasks: deploy_mongodb_rs.yaml
+

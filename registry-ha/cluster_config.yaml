@@ -1,0 +1,35 @@
+# USAGE: Edit this file directly to match your Kubernetes platform.
+# When switching platforms, update the values below to match your environment
+---
+# ==============================================================================
+# PLATFORM IDENTIFICATION
+# ==============================================================================
+# Identify your Kubernetes distribution and version
+# Options: rke2, k3s, k8s, openshift
+
+cluster_type: "rke2"
+
+# ==============================================================================
+# CONTAINER RUNTIME CONFIGURATION
+# ==============================================================================
+# Configure paths and settings for your container runtime
+# Edit these values when switching platforms
+container_runtime:
+  type: "containerd"
+  namespace: "k8s.io"             # Container namespace (usually k8s.io)
+
+  binaries:
+    rke2:
+      ctr: "/var/lib/rancher/rke2/bin/ctr"
+    eks:
+     ctr: "/usr/bin/ctr"
+    # K3S example:     ctr_path: "/usr/local/bin/ctr"
+    # K8s example:     ctr_path: "/usr/bin/ctr"
+    # OpenShift:       ctr_path: "/usr/bin/crictl"
+
+  sockets:
+    rke2: "/run/k3s/containerd/containerd.sock"
+    eks: "/run/containerd/containerd.sock"
+    # K3S example:     containerd: "/run/k3s/containerd/containerd.sock"
+    # K8s example:     containerd: "/run/containerd/containerd.sock"
+    # OpenShift:       crio: "/var/run/crio/crio.sock"

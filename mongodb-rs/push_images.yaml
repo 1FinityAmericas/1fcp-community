@@ -1,0 +1,6 @@
+---
+- hosts: primary_master_node_group
+  vars:
+    push_all_images: "{{ 'push-images' in ansible_run_tags }}"
+  roles:
+    - push_images

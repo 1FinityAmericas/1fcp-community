@@ -1,0 +1,10 @@
+---
+#
+- hosts: primary_master_node_group
+  #gather_facts: true
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  roles:
+    - deploy_cosign
+

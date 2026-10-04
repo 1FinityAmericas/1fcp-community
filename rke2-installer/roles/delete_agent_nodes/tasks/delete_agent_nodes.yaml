@@ -1,0 +1,10 @@
+---
+# Tasks for deleting the agent nodes
+#
+- name: Set agent nodes fact
+  set_fact:
+    agent_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubeworkers']) | list }}"
+
+- name: delete the agent nodes
+  shell: "kubectl delete node {{ item }}"
+  with_items: "{{ agent_nodes }}"

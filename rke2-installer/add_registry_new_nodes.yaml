@@ -1,0 +1,7 @@
+---
+# Play for adding local docker registry certificates to new agent/worker nodes
+- hosts: new_nodes
+  gather_facts: no
+  
+  roles:
+    - add_registry_new_nodes

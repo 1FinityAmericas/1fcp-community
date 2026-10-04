@@ -1,0 +1,53 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: registry-ing
+  namespace: {{ include "registry.namespace" . }}
+  annotations:
+{{ toYaml .Values.ingress.annotations | indent 4 }}
+spec:
+  tls:
+  - hosts:
+    -  {{ .Values.ingress.host }}         
+    secretName: loc-reg-secret
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: registry
+                port:
+                  number: 80
+{{- end }}
+---
+{{- if .Values.minioConsoleIngress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console-ing
+  namespace: {{ include "registry.namespace" . }}
+  annotations:
+{{ toYaml .Values.minioConsoleIngress.annotations | indent 4 }}
+spec:
+  {{- if .Values.minioConsoleIngress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.minioConsoleIngress.host }}
+      secretName: {{ .Values.minioConsoleIngress.tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.minioConsoleIngress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio-lb
+                port:
+                  number: 9001
+{{- end }}

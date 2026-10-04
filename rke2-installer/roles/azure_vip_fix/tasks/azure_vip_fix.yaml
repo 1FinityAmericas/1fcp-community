@@ -1,0 +1,54 @@
+---
+#
+
+- name: Create vip directory
+  file:
+    path: "{{ ansible_env.HOME }}/vip"
+    state: directory
+
+- name: Copy kubevip_wrapper.sh to {{ ansible_env.HOME }}
+  copy:
+    src: "{{ playbook_dir }}/roles/azure_vip_fix/files/kubevip_wrapper.sh"
+    dest: "{{ ansible_env.HOME  }}/vip/kubevip_wrapper.sh"
+    mode: '0750'
+
+- name: Copy kube_vip.sh to {{ ansible_env.HOME }}
+  copy:
+    src: "{{ playbook_dir }}/roles/azure_vip_fix/files/kube_vip.sh"
+    dest: "{{ ansible_env.HOME  }}/vip/kube_vip.sh"
+    mode: '0750'
+
+- name: Set ownership and permissions for vip directory
+  become: yes
+  file:
+    path: "{{ ansible_env.HOME }}/vip"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0750'
+    recurse: yes
+
+- name: Set master node index for staggered cron execution
+  set_fact:
+    master_index: "{{ groups['kubemasters'].index(inventory_hostname) }}"
+  when: inventory_hostname in groups['kubemasters']
+
+- name: Create VIP configuration file with Azure client ID
+  become: yes
+  copy:
+    content: "AZURE_CLIENT_ID={{ azure_vip_fix.azure_client_id | default('') }}\n"
+    dest: "{{ ansible_env.HOME }}/vip/vip_config.sh"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_group }}"
+    mode: '0640'
+  when: inventory_hostname in groups['kubemasters']
+
+- name: Create cron job to run azure kube vip fix on all masters with staggered timing
+  become: yes
+  cron:
+    name: "Run kubevip_wrapper.sh script every 3 minutes"
+    job: "{{ ansible_env.HOME }}/vip/kubevip_wrapper.sh >> {{ ansible_env.HOME }}/vip/kubevip_wrapper.log 2>&1"
+    minute: "{{ master_index | int }},{{ (master_index | int) + 3 }},{{ (master_index | int) + 6 }},{{ (master_index | int) + 9 }},{{ (master_index | int) + 12 }},{{ (master_index | int) + 15 }},{{ (master_index | int) + 18 }},{{ (master_index | int) + 21 }},{{ (master_index | int) + 24 }},{{ (master_index | int) + 27 }},{{ (master_index | int) + 30 }},{{ (master_index | int) + 33 }},{{ (master_index | int) + 36 }},{{ (master_index | int) + 39 }},{{ (master_index | int) + 42 }},{{ (master_index | int) + 45 }},{{ (master_index | int) + 48 }},{{ (master_index | int) + 51 }},{{ (master_index | int) + 54 }},{{ (master_index | int) + 57 }}"
+    hour: "*"
+    user: "{{ ansible_user }}"
+  when: inventory_hostname in groups['kubemasters']
+

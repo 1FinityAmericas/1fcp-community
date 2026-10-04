@@ -1,0 +1,185 @@
+fullnameOverride: "nifi"
+image:
+  registry: artifactory.fnc.fujitsu.com
+  repository: fcp/1.1/nifi
+  tag: 2.9.0-debian13
+  pullPolicy: IfNotPresent
+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 8443
+
+ingress:
+  enabled: true
+  className: ""
+  ip: apache-nifi.10.156.198.7.nip.io
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-path: "/"
+    nginx.ingress.kubernetes.io/session-cookie-name: "NIFI_SESSION"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+  hosts:
+    - host: apache-nifi.10.156.198.7.nip.io
+      paths:
+        - path: /nifi(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: apache-nifi-secret
+      hosts:
+        - apache-nifi.10.156.198.7.nip.io
+
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClassName: "rancher-dynamic-local-path"
+
+resources:
+  requests:
+    cpu: 2
+    memory: "2Gi"
+  limits:
+    cpu: 4
+    memory: "4Gi"
+replicaCount: 3
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+rbac:
+  create: true
+
+# JVM sizing
+jvm:
+  xms: 1g
+  xmx: 2g
+  extra: ""
+
+# Single-user authentication configuration
+auth:
+  mode: singleUser # only mode supported by this chart revision
+  providerIdentifier: single-user-provider
+  username: admin
+  password: "0NifiAdmin@123" # Atleast 12 character long.
+  # Optionally store a hashed password instead of plain text. If set, it takes precedence.
+  hashedPassword: "" # e.g. bcrypt/argon2id hash if supported by your NiFi build
+
+# NiFi properties
+properties:
+  web:
+    protocol: https # http|https (this chart uses http; terminate TLS at ingress/LB)
+    host: 0.0.0.0
+    port: 8443
+  cluster:
+    isNode: true
+    nodeReadTimeout: "5 min"
+    nodeConnectionTimeout: "30 sec"
+    requestReplicationClaimTimeout: "5 min"
+  s2s:
+    enabled: false
+    port: 10000
+
+# Probes
+probes:
+  liveness:
+    initialDelaySeconds: 120
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 8
+  readiness:
+    initialDelaySeconds: 90
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 12
+
+# Extra environment vars
+nifiWebProxyHost: "apache-nifi.10.156.198.7.nip.io"
+
+# Custom configuration files to mount to $NIFI_HOME/conf
+# Pre-stage files on host at hostPath before deployment
+customConf:
+  enabled: false
+  storageSize: "100Mi"
+  hostPath: /var/lib/docker/dynamic-local-path-mounts/nifi/conf
+
+# Custom library files (JARs/NARs) to mount to $NIFI_HOME/lib
+customLib:
+  enabled: false
+  storageSize: "5Gi"
+  hostPath: /var/lib/docker/dynamic-local-path-mounts/nifi/lib
+
+# Custom extensions (NAR files) to mount to $NIFI_HOME/extensions
+# NiFi 2.x autoloads NARs from this directory
+customExtensions:
+  enabled: false
+  storageSize: "5Gi"
+  hostPath: /var/lib/docker/dynamic-local-path-mounts/nifi/extensions
+
+# DPM scripts to mount to $NIFI_HOME/dpm-scripts
+dpmScripts:
+  enabled: false
+  storageSize: "1Gi"
+  hostPath: /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts
+
+# Ingress Controller Selection
+# Options: 'nginx' or 'traefik'
+ingressController:
+  name: nginx
+  localCert: true
+
+# Gateway API Configuration (used when ingressController.name is 'traefik')
+shared_gateway:
+  name: traefik-gateway
+  namespace: kube-system
+  httpSectionName: web
+  httpsSectionName: websecure
+  hostname: ""
+  # HTTPRoute path matching
+  pathMatch:
+    type: RegularExpression
+    value: "^/nifi.*"  
+  # Traefik-specific configurations for NiFi
+  serversTransport:
+    insecureSkipVerify: true
+  middleware:
+    buffering:
+      maxRequestBodyBytes: 524288000
+      memRequestBodyBytes: 2097152
+      retryExpression: "IsNetworkError() && Attempts() < 2"
+  # Sticky session configuration
+  sticky:
+    cookieName: NIFI_SESSION
+    secure: true
+    httpOnly: true
+    sameSite: none
+  # Timeout configuration
+  timeouts:
+    request: "3600s"
+    backendRequest: "3600s"

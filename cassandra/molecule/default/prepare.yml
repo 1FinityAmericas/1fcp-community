@@ -1,0 +1,19 @@
+---
+# Verifies prerequisites before running test scenarios
+- name: Verify prerequisites
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  
+  tasks:
+    - name: Verify kubectl is available
+      command: kubectl version --client
+      changed_when: false
+
+    - name: Verify helm is available
+      command: helm version
+      changed_when: false
+
+    - name: Verify Kubernetes cluster is accessible
+      command: kubectl cluster-info
+      changed_when: false

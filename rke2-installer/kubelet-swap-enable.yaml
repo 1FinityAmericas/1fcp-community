@@ -1,0 +1,9 @@
+---
+# Play for configuring the kubelet swap configurations of agent nodes
+- hosts: swap_nodes
+  #gather_facts: no
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - kubelet-swap-enable

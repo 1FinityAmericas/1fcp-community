@@ -1,0 +1,106 @@
+---
+- name: Detect home directory on a master node
+  command: echo $HOME
+  register: master_home
+  delegate_to: "{{ groups['kubemasters'][0] }}"
+  run_once: true
+
+- name: creating registry namespace
+  shell: kubectl create ns '{{docker_registry.namespace}}'
+  ignore_errors: yes
+
+- name: creating registry secret
+  shell: "kubectl -n {{ docker_registry.namespace }} create secret tls loc-reg-secret --cert={{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.crt --key={{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.key"
+  ignore_errors: yes
+
+- name: Wait until atleast one ingress-pod is 'Ready'
+  shell: kubectl get pods -n kube-system -l app.kubernetes.io/component=controller --no-headers |awk '{print $2,$3}'
+  register: ing_pod
+  until: (ing_pod.stdout_lines | select('contains', '1/1 Running') | list | length > 0 )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait until all control-plane masters are Ready & decide as many minio-backends needed for deploying docker registry
+  shell: |
+    kubectl get nodes -l node-role.kubernetes.io/control-plane --no-headers | awk '{split($2, a, "," ); print a[1]}'
+  register: cp_ready_status
+  until: cp_ready_status.stdout_lines | difference(['Ready']) | length == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- debug:
+    msg: "number of masters detected: {{ cp_ready_status.stdout_lines | length }}.Thus {{ cp_ready_status.stdout_lines | length }} minio backends will be deployed" 
+
+- name: Check if Helm release already exists (i.e helm upgrade)
+  shell: helm status ha-{{ docker_registry.namespace }} -n {{ docker_registry.namespace }} >/dev/null 2>&1 && echo "true" || echo "false"
+  register: is_helm_upgrade
+  changed_when: false
+
+- name: Flush the PV base path (minio disks) explicitly off stale data only during fresh / clean-up re-install
+  become: yes
+  shell: |
+    set -e
+    p="{{ docker_registry.minio.image.basePath }}"
+    test -d "$p"
+    rm -rf {{ docker_registry.minio.image.basePath }}/.minio.sys
+    find "$p" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  changed_when: false
+  when: is_helm_upgrade.stdout == "false"
+
+- name: Deploying local docker registry
+  shell: helm upgrade --install ha-{{ docker_registry.namespace }} {{ playbook_dir }}/apps/helm-charts/. \
+         --set masterNodes={{ cp_ready_status.stdout_lines | length }} \
+         --set minio.replicaCount={{ cp_ready_status.stdout_lines | length }} \
+         --set ingress.host={{ ext_doc_reg_dns }} \
+         --set minio.basePath={{ docker_registry.minio.image.basePath }} \
+         --set registry.image.repository={{ registry }}/registry \
+         --set registry.image.tag={{ docker_registry.registry.image.tag }} \
+         --set minio.image.repository={{ registry }}/minio \
+         --set minio.image.tag={{ docker_registry.minio.image.tag }} \
+         --set namespace={{ docker_registry.namespace }} \
+         --set securityContext.runAsUser={{ docker_registry.securityContext.runAsUser }} \
+         --set securityContext.runAsGroup={{ docker_registry.securityContext.runAsGroup }} \
+         --set securityGroup.fsGroup={{ docker_registry.securityContext.fsGroup }} \
+         -n {{ docker_registry.namespace }}
+
+- name: waiting for  registry pods to move to 'ready' state upto 10 minutes timeout
+  shell: "kubectl get pods -n {{docker_registry.namespace}} -l 'app={{ docker_registry.namespace }}' --no-headers  | awk '{ print $2, $3}' "
+  register: registry_pod
+  until: (registry_pod.stdout_lines|length > 0 )  and  (registry_pod.stdout | regex_findall('1/1 Running'))
+  retries: 60
+  delay: 10
+  ignore_errors: no
+  
+- name: Check the health of registry-ingress endpoint
+  shell: 'curl -k --connect-timeout 5 --max-time 15 https://{{ext_doc_reg_dns}}/v2/_catalog  -s -o /dev/null  -w "%{http_code}"'
+  register: status_code
+  failed_when: status_code.rc != 0 or status_code.stdout != "200"
+  until: status_code.stdout == "200"
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Push the registry images inside registry (itself) for supplementing image pulls on other nodes during recovery use-cases
+  become: yes
+  command: >
+    {{ ctr_cmd }} -n k8s.io image push {{ item }}
+  loop:
+    - "{{ registry }}/minio:{{ docker_registry.minio.image.tag }}"
+    - "{{ registry }}/registry:{{ docker_registry.registry.image.tag }}"
+  ignore_errors: true
+
+- name: Remove all tar files from master nodes
+  become: yes
+  shell: |
+    for tar_file in {{ master_home.stdout }}/*{registry,minio}*.tar; do
+      [ -e "$tar_file" ] || continue
+      rm -f "$tar_file"
+      echo "Removed: $tar_file"
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['kubemasters'] }}"
+  run_once: true

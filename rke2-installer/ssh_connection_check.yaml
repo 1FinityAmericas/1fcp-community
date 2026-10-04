@@ -1,0 +1,6 @@
+- name: Checking ssh connection and deleting secret if no ssh connection
+  hosts: primary_master_node_group
+  gather_facts: no
+
+  roles:
+    - ssh_connection_check

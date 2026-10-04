@@ -1,0 +1,3 @@
+#
+- name: cleaning up apache nifi project
+  import_tasks: nifi_cleanup.yaml

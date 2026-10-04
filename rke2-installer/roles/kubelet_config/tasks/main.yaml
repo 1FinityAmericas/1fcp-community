@@ -1,0 +1,9 @@
+# file: roles/kubelet_config/tasks/main.yml
+#
+- name: dynamically update worker kubelet config
+  import_tasks: worker_kubelet_config.yaml
+  when: ( 'configure-kubelet-worker' in ansible_run_tags) and (inventory_hostname in groups['kubeworkers'])
+
+- name: dynamically update master kubelet config
+  import_tasks: master_kubelet_config.yaml
+  when: ( 'configure-kubelet-master' in ansible_run_tags) and (inventory_hostname in groups['kubemasters'])

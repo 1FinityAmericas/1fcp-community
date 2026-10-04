@@ -1,0 +1,11 @@
+mirrors:
+  docker.io:
+    endpoint:
+      - https://fnc-docker-reg:3000
+configs:
+  "fnc-docker-reg:3000":
+    tls:
+      cert_file: /etc/rancher/rke2/svr-domain.crt   # path to the cert file used to authenticate to the registry
+      key_file: /etc/rancher/rke2/svr-domain.key  # path to the key file for the certificate used to authenticate to the registry
+      ca_file: /etc/rancher/rke2/rootCA.crt              # path to the ca file used to verify the registry's certificate
+      insecure_skip_verify: false # may be set to true to skip verifying the registry's certificate

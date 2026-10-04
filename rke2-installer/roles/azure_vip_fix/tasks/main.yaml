@@ -1,0 +1,5 @@
+#
+
+- name: Azure kube vip fix
+  import_tasks: azure_vip_fix.yaml
+  when: azure_vip_fix.enable | bool

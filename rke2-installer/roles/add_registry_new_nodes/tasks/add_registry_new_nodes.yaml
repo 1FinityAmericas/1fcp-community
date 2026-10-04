@@ -1,0 +1,54 @@
+---
+# Play for adding local docker registry certificates to new agent/worker/master nodes
+- name: Check & get one of the control node(master) which hosts registry pod.
+  run_once: true
+  delegate_to: localhost
+  shell: |
+    kubectl get pods -n {{ docker_registry.project }} -l app={{ docker_registry.project }} \
+    -o jsonpath='{range .items[?(@.status.containerStatuses[*].ready all true)]}{.spec.nodeName}{"\n"}{end}' | head -n1
+  register: active_registry_node
+  changed_when: false
+
+- name: Skip/End play when no registry is running in the cluster
+  meta: end_play
+  when: active_registry_node.stdout | trim == "" 
+
+  # ────────────────────────────────────────Registry realsied as available and further plays process regsitry data ────────────────────────────────────────────────────────────────────────────────────────
+- name: adding local registry DNS '{{ext_doc_reg_dns}}' to /etc/hosts of  newly added node(s)
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: present
+    insertafter: EOF
+    line: "{{ ha_rke2_vip_address if (ha_rke2 | default(false) | bool) else hostvars[groups['primary_master_node_group'][0]].ip }} {{ext_doc_reg_dns}}"  
+    
+- name: Fetch registry CA cert from the (master)node that hosts registry
+  become: yes
+  fetch:
+    src: /etc/pki/ca-trust/source/anchors/rootCA-loc-reg.crt
+    dest: '{{ role_path }}/files//rootCA-loc-reg.crt'
+    flat: yes
+  register: registry_ca_cert  
+  delegate_to: '{{ active_registry_node.stdout }}'
+  ignore_errors: yes
+  run_once: true
+  
+
+- name: Check & configure registry CA on new node(s)
+  when:
+    - active_registry_node.stdout != ""         #    a master node exists that has registry pod running
+    - not registry_ca_cert.failed                   #    rootCA-loc-reg file exists & fetched from that master node
+
+  block:
+    - name: Publish fetched registry CA cert from control node to the newly added node(s)
+      become: yes
+      copy:
+        src: '{{ role_path }}/files//rootCA-loc-reg.crt'
+        dest: "/etc/pki/ca-trust/source/anchors/rootCA-loc-reg.crt"
+        mode: '0644'
+      register: cert_copied
+
+    - name: Update CA trust on the newly added node(s)
+      when: cert_copied.changed
+      become: yes
+      command: update-ca-trust extract

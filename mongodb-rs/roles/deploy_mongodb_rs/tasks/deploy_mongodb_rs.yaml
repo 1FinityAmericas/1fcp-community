@@ -1,0 +1,128 @@
+---
+
+- name: Get list of StorageClasses
+  shell: kubectl get storageclass --no-headers
+  register: sc_list
+  changed_when: false
+
+- name: Fail if no StorageClass exists in cluster
+  fail:
+    msg: "No StorageClass available in the cluster. MongoDB deployment cannot continue."
+  when: sc_list.stdout | trim | length == 0
+
+- name: Check if app StorageClass exists
+  shell: kubectl get storageclass {{ mongodb_rs.psmdb_cluster.replsets.rs0.volumeSpec.pvc.storageClassName }}
+  register: sc_check
+  failed_when: false
+  changed_when: false
+
+- name: Get default StorageClass
+  command: >
+    kubectl get storageclass
+    -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
+  register: default_sc
+  changed_when: false
+  when: sc_check.rc != 0
+
+- name: Set effective StorageClass
+  set_fact:
+    effective_storage_class: "{{ mongodb_rs.psmdb_cluster.replsets.rs0.volumeSpec.pvc.storageClassName if sc_check.rc == 0 else default_sc.stdout }}"
+
+##############################################
+# PSMDB OPERATOR + CRDs DEPLOYMENT
+##############################################
+
+- name: Deploy PSMDB Operator and verify CRDs
+  import_tasks: deploy_operator.yaml
+  tags:
+    - deploy-mongodb
+
+##############################################
+# PSMDB CLUSTER DEPLOYMENT
+##############################################
+
+- name: Create database namespace
+  shell: "kubectl create ns {{ mongodb_rs.namespace }}"
+  ignore_errors: true
+
+- name: Deploy PSMDB Cluster
+  shell: >
+    helm upgrade --install {{ app_name }}
+    -f {{ playbook_dir }}/apps/helm-charts/mongodb-rs/values.yaml
+    {{ playbook_dir }}/apps/helm-charts/mongodb-rs
+    -n {{ mongodb_rs.namespace }}
+    --set crVersion={{ mongodb_rs.psmdb_cluster.crVersion }}
+    --set imageRegistry={{ registry }}
+    --set multiCluster.enabled={{ mongodb_rs.psmdb_cluster.multiCluster.enabled }}
+    --set image.repository={{ mongodb_rs.psmdb_cluster.image.repository }}
+    --set image.tag={{ mongodb_rs.psmdb_cluster.image.tag }}
+    --set initImage.repository={{ mongodb_rs.psmdb_operator.image.repository }}
+    --set initImage.tag={{ mongodb_rs.psmdb_operator.image.tag }}
+    --set tls.mode={{ mongodb_rs.psmdb_cluster.tls.mode }}
+    --set tls.certValidityDuration={{ mongodb_rs.psmdb_cluster.tls.certValidityDuration }}
+    --set tls.allowInvalidCertificates={{ mongodb_rs.psmdb_cluster.tls.allowInvalidCertificates }}
+    --set replsets.rs0.name={{ mongodb_rs.psmdb_cluster.replsets.rs0.name }}
+    --set replsets.rs0.size={{ mongodb_rs.psmdb_cluster.replsets.rs0.size }}
+    --set replsets.rs0.resources.limits.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.resources.limits.cpu }}
+    --set replsets.rs0.resources.limits.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.resources.limits.memory }}
+    --set replsets.rs0.resources.requests.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.resources.requests.cpu }}
+    --set replsets.rs0.resources.requests.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.resources.requests.memory }}
+    --set replsets.rs0.volumeSpec.pvc.storageClassName={{ effective_storage_class }}
+    --set replsets.rs0.volumeSpec.pvc.resources.requests.storage={{ mongodb_rs.psmdb_cluster.replsets.rs0.volumeSpec.pvc.resources.requests.storage }}
+    --set replsets.rs0.hidden.enabled={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.enabled }}
+    --set replsets.rs0.hidden.size={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.size }}
+    --set replsets.rs0.hidden.resources.limits.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.resources.limits.cpu }}
+    --set replsets.rs0.hidden.resources.limits.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.resources.limits.memory }}
+    --set replsets.rs0.hidden.resources.requests.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.resources.requests.cpu }}
+    --set replsets.rs0.hidden.resources.requests.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.resources.requests.memory }}
+    --set replsets.rs0.hidden.volumeSpec.pvc.storageClassName={{ effective_storage_class }}
+    --set replsets.rs0.hidden.volumeSpec.pvc.resources.requests.storage={{ mongodb_rs.psmdb_cluster.replsets.rs0.hidden.volumeSpec.pvc.resources.requests.storage }}
+    --set replsets.rs0.nonvoting.enabled={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.enabled }}
+    --set replsets.rs0.nonvoting.size={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.size }}
+    --set replsets.rs0.nonvoting.resources.limits.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.resources.limits.cpu }}
+    --set replsets.rs0.nonvoting.resources.limits.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.resources.limits.memory }}
+    --set replsets.rs0.nonvoting.resources.requests.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.resources.requests.cpu }}
+    --set replsets.rs0.nonvoting.resources.requests.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.resources.requests.memory }}
+    --set replsets.rs0.nonvoting.volumeSpec.pvc.storageClassName={{ effective_storage_class }}
+    --set replsets.rs0.nonvoting.volumeSpec.pvc.resources.requests.storage={{ mongodb_rs.psmdb_cluster.replsets.rs0.nonvoting.volumeSpec.pvc.resources.requests.storage }}
+    --set replsets.rs0.arbiter.enabled={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.enabled }}
+    --set replsets.rs0.arbiter.size={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.size }}
+    --set replsets.rs0.arbiter.resources.limits.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.resources.limits.cpu }}
+    --set replsets.rs0.arbiter.resources.limits.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.resources.limits.memory }}
+    --set replsets.rs0.arbiter.resources.requests.cpu={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.resources.requests.cpu }}
+    --set replsets.rs0.arbiter.resources.requests.memory={{ mongodb_rs.psmdb_cluster.replsets.rs0.arbiter.resources.requests.memory }}
+    --set systemUsers.MONGODB_DATABASE_ADMIN_USER={{ systemUsers.MONGODB_DATABASE_ADMIN_USER }}
+    --set systemUsers.MONGODB_DATABASE_ADMIN_PASSWORD={{ systemUsers.MONGODB_DATABASE_ADMIN_PASSWORD }}
+    --set systemUsers.MONGODB_CLUSTER_ADMIN_USER={{ systemUsers.MONGODB_CLUSTER_ADMIN_USER }}
+    --set systemUsers.MONGODB_CLUSTER_ADMIN_PASSWORD={{ systemUsers.MONGODB_CLUSTER_ADMIN_PASSWORD }}
+    --set systemUsers.MONGODB_CLUSTER_MONITOR_USER={{ systemUsers.MONGODB_CLUSTER_MONITOR_USER }}
+    --set systemUsers.MONGODB_CLUSTER_MONITOR_PASSWORD={{ systemUsers.MONGODB_CLUSTER_MONITOR_PASSWORD }}
+    --set systemUsers.MONGODB_USER_ADMIN_USER={{ systemUsers.MONGODB_USER_ADMIN_USER }}
+    --set systemUsers.MONGODB_USER_ADMIN_PASSWORD={{ systemUsers.MONGODB_USER_ADMIN_PASSWORD }}
+    {% if mongodb_rs.logcollector.enabled %}
+    --set logcollector.enabled={{ mongodb_rs.logcollector.enabled }}
+    --set logcollector.image.repository={{ mongodb_rs.logcollector.image.repository }}
+    --set logcollector.image.tag={{ mongodb_rs.logcollector.image.tag }}
+    --set logcollector.resources.requests.memory={{ mongodb_rs.logcollector.resources.requests.memory }}
+    --set logcollector.resources.requests.cpu={{ mongodb_rs.logcollector.resources.requests.cpu }}
+    {% endif %}
+    {% if mongodb_rs.pmm.enabled %}
+    --set pmm.enabled={{ mongodb_rs.pmm.enabled }}
+    --set pmm.image.repository={{ mongodb_rs.pmm.image.repository }}
+    --set pmm.image.tag={{ mongodb_rs.pmm.image.tag }}
+    {% endif %}
+
+- name: Wait for PSMDB Cluster pods to be Running and Ready
+  shell: "kubectl get pods -n {{ mongodb_rs.namespace }} -l app={{ app_name }} --no-headers | awk '{ print $2, $3}'"
+  register: cluster_pod_status
+  until: >
+    (cluster_pod_status.stdout_lines | length > 0) and
+    (
+      cluster_pod_status.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (cluster_pod_status.stdout_lines | length)
+    )
+  retries: 60
+  delay: 10
+  changed_when: false

@@ -1,0 +1,3 @@
+#
+- name: reloading an agent kubelet config
+  import_tasks: kubelet-swap-enable.yaml

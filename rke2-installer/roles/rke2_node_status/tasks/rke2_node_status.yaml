@@ -1,0 +1,18 @@
+---
+- name: Get node status
+  shell: "kubectl get nodes --no-headers | awk '{split($2, a, \",\"); print a[1]}'"
+  register: node_status
+  until: node_status.stdout_lines | unique | length == 1 and node_status.stdout_lines[0] == 'Ready'
+  retries: 10
+  delay: 30
+  changed_when: false
+
+- name: Debug node statuses
+  debug:
+    msg: "Current node statuses: {{ node_status.stdout_lines }}"
+
+- name: Fail if nodes are not in Ready state
+  fail:
+    msg: "Some nodes are not in Ready state: {{ node_status.stdout_lines }}"
+  when: "'Ready' not in node_status.stdout_lines or node_status.stdout_lines | unique | length > 1"
+

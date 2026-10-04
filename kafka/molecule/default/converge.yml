@@ -1,0 +1,51 @@
+---
+# Syntax validation for root-level playbooks
+- name: Syntax validation
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  
+  vars:
+    project_dir: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+  
+  tasks:
+    - name: Find all YAML files in project root
+      find:
+        paths: "{{ project_dir }}"
+        patterns: "*.yaml,*.yml"
+        file_type: file
+        recurse: no
+      register: root_yaml_files
+
+    - name: Set YAML files lists
+      set_fact:
+        all_yaml_files: "{{ root_yaml_files.files | map(attribute='path') | list }}"
+        playbook_files: "{{ root_yaml_files.files | map(attribute='path') | reject('search', 'cluster_config|dep_hosts|dep_hosts_kind|inventory|values|reviewers.yaml') | list }}"
+
+    - name: Display found files
+      debug:
+        msg: 
+          - "Found {{ all_yaml_files | length }} total YAML files"
+          - "Found {{ playbook_files | length }} playbook files to validate"
+
+    - name: Validate playbook syntax with ansible-playbook
+      command: ansible-playbook --syntax-check {{ item }}
+      changed_when: false
+      loop: "{{ playbook_files }}"
+      when: playbook_files | length > 0
+      register: syntax_result
+
+    - name: Run ansible-lint on all YAML files
+      command: ansible-lint {{ item }}
+      register: ansible_lint_result
+      changed_when: false
+      failed_when: ansible_lint_result.rc != 0 and ansible_lint_result.rc != 2
+      loop: "{{ all_yaml_files }}"
+      when: all_yaml_files | length > 0
+
+    - name: Show validation summary
+      debug:
+        msg: 
+          - "Validation completed:"
+          - "  - {{ playbook_files | length }} playbook files checked with ansible-playbook --syntax-check"
+          - "  - {{ all_yaml_files | length }} total YAML files checked with ansible-lint"

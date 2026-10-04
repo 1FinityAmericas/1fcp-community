@@ -1,0 +1,54 @@
+---
+- name: Remove cassandra helm chart
+  shell: helm del -n {{ cassandra.namespace }} cassandra
+  ignore_errors: true
+
+- name: Delete cassandra StatefulSet
+  shell: kubectl delete statefulset -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete cassandra Service
+  shell: kubectl delete service -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete cassandra Secret
+  shell: |
+    kubectl delete secret -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+    kubectl delete secret  -n {{ cassandra.namespace }} cassandra-password --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete cassandra configmap
+  shell: kubectl delete configmap -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete cassandra pvc
+  shell: kubectl delete pvc -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete cassandra pdb
+  shell: kubectl delete pdb -n {{ cassandra.namespace }} -l app=cassandra --grace-period=0 --force
+  ignore_errors: true
+
+- name: Ensure cassandra pods are deleted
+  shell: |
+    kubectl get pods -n {{ cassandra.namespace }} --no-headers -l app=cassandra --no-headers -o custom-columns=":metadata.name" || true
+  register: cassandra_pod_status
+  retries: 15
+  delay: 15
+  until: cassandra_pod_status.stdout | trim | length == 0
+
+- name: Remove nodetool_repair cron job safely
+  become: yes
+  when: cassandra.nodetool_repair|bool == true
+  block:
+    - name: Remove cron job using cron module
+      cron:
+        name: "nodetool repair"
+        user: '{{ ansible_user }}'
+        state: absent
+
+    - name: Verify cron job is removed
+      shell: crontab -l | grep nodetool_repair.sh
+      register: cron_list
+      failed_when: cron_list.stdout| int > 1
+      ignore_errors: yes

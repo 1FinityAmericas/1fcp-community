@@ -1,0 +1,6 @@
+# file: roles/remove_dns/tasks/main.yml
+#
+- name: remove dns
+  import_tasks: remove_dns.yaml
+
+#

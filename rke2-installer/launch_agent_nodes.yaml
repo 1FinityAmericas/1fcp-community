@@ -1,0 +1,9 @@
+---
+# Play for launching the Agent node
+- hosts: kubeworkers
+  #gather_facts: no
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - launch_agent_node

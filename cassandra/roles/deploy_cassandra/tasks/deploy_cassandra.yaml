@@ -1,0 +1,145 @@
+---
+- name: Get list of StorageClasses
+  shell: kubectl get storageclass --no-headers
+  register: sc_list
+  changed_when: false
+
+- name: Fail if no StorageClass exists in cluster
+  fail:
+    msg: "No StorageClass available in the cluster. Cassandra deployment cannot continue."
+  when: sc_list.stdout | trim == ""
+
+- name: Check if StorageClass exists
+  shell: kubectl get storageclass {{ cassandra.storageClass }}
+  register: sc_check
+  failed_when: false
+
+- name: Get default StorageClass
+  command: >
+    kubectl get storageclass
+    -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
+  register: default_sc
+  changed_when: false
+  when: sc_check.rc != 0
+
+- name: Set effective StorageClass
+  set_fact:
+    effective_storage_class: "{{ cassandra.storageClass if sc_check.rc == 0 else default_sc.stdout }}"
+
+- name: Fail if no usable StorageClass
+  fail:
+    msg: "Specified StorageClass '{{ cassandra.storageClass }}' does not exist and no default StorageClass is available."
+  when:
+    - sc_check.rc != 0
+    - default_sc.stdout | trim == ""
+
+- name: create  namespace
+  shell: kubectl create ns {{ cassandra.namespace }}
+  ignore_errors: true
+
+- name: create dbUser secret
+  shell: |
+    kubectl create secret generic {{ cassandra_name }}-password -n {{ cassandra.namespace }} --from-literal=cassandra-password={{ cassandra.dbUser.password }}
+  ignore_errors: true
+
+- name: helm install / upgrade
+  args:
+    chdir: "{{ playbook_dir }}/apps/helm-charts/"
+  shell: >
+    helm upgrade --install cassandra
+    -n {{ cassandra.namespace }}
+    -f values.yaml ./ 
+    --set storageClass={{ effective_storage_class }}
+    {% if imagePullSecretsExists is defined %}
+    --set imagePullSecrets[0].name="{{ cassandra.imagePullSecrets[0].name }}"
+    {% endif %}
+    {%if cassandra.nameOverride is defined %}
+    --set cassandra.nameOverride={{ cassandra.nameOverride }}
+    {% endif %}
+    {%if cassandra.fullnameOverride is defined %}
+    --set cassandra.fullnameOverride={{ cassandra.fullnameOverride }}
+    {% endif %}
+    --set imageRegistry={{ registry }}
+    --set image.repository={{ cassandra.image.repository }}
+    --set image.tag={{ cassandra.image.tag }}
+    --set image.initRepository={{ cassandra.init.image.repository }}
+    --set image.initTag={{ cassandra.init.image.tag }}
+    --set image.pullPolicy={{ cassandra.image.pullPolicy }}
+    --set dbUser.user={{ cassandra.dbUser.user }}
+    --set dbUser.existingSecret={{ cassandra_name }}-password
+    --set cluster.replicaCount={{ cassandra.cluster.replicaCount }}
+    --set securityContext.runAsUser={{ cassandra.securityContext.runAsUser }}
+    --set securityContext.runAsGroup={{ cassandra.securityContext.runAsGroup }}
+    --set securityContext.fsGroup={{ cassandra.securityContext.fsGroup }}
+    --set resources.limits.cpu={{ cassandra.resources.limits.cpu }}
+    --set resources.limits.memory={{ cassandra.resources.limits.memory }}
+    --set resources.requests.cpu={{ cassandra.resources.requests.cpu }}
+    --set resources.requests.memory={{ cassandra.resources.requests.memory }}
+    --set jvm.maxHeapSize={{ cassandra.jvm.maxHeapSize }}
+    --set jvm.newHeapSize={{ cassandra.jvm.newHeapSize }}
+    --set metrics.enabled={{ cassandra.metrics.enabled }}
+    --set enablePasswordSeeder={{ cassandra.enablePasswordSeeder }}
+    --set cluster.datacenter={{ cassandra.cluster.datacenter }}
+    --set cluster.rack={{ cassandra.cluster.rack | quote }}
+    {% if cassandra.geod == "enable" %}
+    --set cluster.seeds={{ cassandra.cluster.seeds | replace(',', '\\,') }}
+    {% endif %}
+    --set cluster.seedCount={{ cassandra.cluster.seedCount }}
+    --set cluster.readTimeout={{ cassandra.cluster.readTimeout }}
+    --set cluster.writeTimeout={{ cassandra.cluster.writeTimeout }}
+    --set podSpec.hostNetwork={{ cassandra.podSpec.hostNetwork }}
+    --set cluster.pdbEnabled={{ cassandra.cluster.pdbEnabled }}
+    {% if cassandra.cluster.pdbEnabled | bool %}
+    --set cluster.minAvailable={{ cassandra.cluster.minAvailable }}
+    {% endif %}
+    {% if cassandra.nodeSelector is defined and cassandra.nodeSelector is not none %}
+    {% for key, value in cassandra.nodeSelector.items() %}
+    --set nodeSelector.{{ key }}={{ value }}
+    {% endfor %}
+    {% endif %}
+
+- name: waiting for cassandra pods to move to 'Running' state upto 10 minutes timeout
+  shell: "kubectl get pods -n {{ cassandra.namespace }} -l app=cassandra --no-headers | awk '{ print $2, $3}'"
+  register: pods
+  until: >
+    ( pods.stdout_lines | length == 0) or
+    ( pods.stdout_lines
+        | select('match', '^([0-9]+)/\\1 Running$')
+        | list
+        | length == (pods.stdout_lines | length) and (pods.stdout_lines | length) > 0
+    )
+  retries: "{{ cassandra.cassandra_retry }}"
+  delay: 10
+
+#geod must have more than 1 replica
+- name: Alter keyspace in Cassandra and check replication factor for geod
+  shell: |
+    kubectl exec -it {{ cassandra_name }}-0 -c cassandra -n {{ cassandra.namespace }} -- cqlsh -u {{ cassandra.dbUser.user }} -p {{ cassandra.dbUser.password }} --request-timeout=60 -e "ALTER KEYSPACE system_auth WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor': 3 };"
+    sleep 100
+    kubectl exec -it {{ cassandra_name }}-1 -c cassandra -n {{ cassandra.namespace }} -- cqlsh -u {{ cassandra.dbUser.user }} -p {{ cassandra.dbUser.password }} --request-timeout=60 -e "DESCRIBE KEYSPACE system_auth;"
+  when: cassandra.geod == "enable"
+  register: keyspace_description
+  until: 
+    - "keyspace_description.stdout_lines | length > 0"
+    - "keyspace_description.stdout | regex_findall(\"'replication_factor': '3'\") | length > 0"
+
+- name: create cronjob to run nodetool_repair.sh at 3AM everyday 
+  when: cassandra.nodetool_repair|bool == true
+  block:
+  - name: Changing perm of "{{ ansible_env.HOME }}/nodetool_repair.log" file
+    become: yes
+    when: cassandra.nodetool_repair|bool == true
+    file:
+      dest: "/var/log/nodetool_repair.log"
+      state: touch
+      owner: '{{ ansible_user }}'
+      group: '{{ ansible_group }}'
+
+  - name: Creating an crontab entry like "0 3 * * * sh nodetool_repair.sh  >> /var/log/nodetool_repair  2>&1"
+    when: cassandra.nodetool_repair|bool == true
+    cron:
+      name: "nodetool repair"
+      minute: "0"
+      hour: "3"
+      job: "sh {{ playbook_dir }}/roles/deploy_cassandra/files/nodetool_repair.sh {{ cassandra.namespace }} >> /var/log/nodetool_repair.log  2>&1"
+      user: '{{ ansible_user }}'

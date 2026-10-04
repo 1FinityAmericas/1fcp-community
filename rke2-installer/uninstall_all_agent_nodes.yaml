@@ -1,0 +1,7 @@
+---
+# Play for uninstalling rke2 on agent nodes
+- hosts: kubeworkers
+  gather_facts: no
+
+  roles:
+    - uninstall_all_agent_nodes

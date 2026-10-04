@@ -1,0 +1,62 @@
+#------------Start: kubelet-args settings-------------------
+- name: Creates 20-cli-config-dir folder if does not exist
+  become: yes
+  file:
+    path: /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir
+    state: directory
+
+- name: Copy kubelet configuration file on master nodes into custom.conf
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/kubelet_config/files/kubeletconfig.conf"
+    dest: "/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir/custom.conf"
+
+- name: Get evictionHard value from the app_config.yaml for master nodes into custom.conf
+  become: yes
+  blockinfile:
+    path: "/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir/custom.conf"
+    marker: ""
+    block: |
+      evictionHard:
+        imagefs.available: "{{ kubelet_args.eviction_hard.imagefs }}"
+        nodefs.available: "{{ kubelet_args.eviction_hard.nodefs }}"
+    create: yes
+    insertbefore: EOF
+
+- name: Get evictionPressureTransitionPeriod value from the app_config.yaml for master nodes into custom.conf
+  become: yes
+  blockinfile:
+    path: "/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir/custom.conf"
+    marker: ""
+    block: |
+      evictionPressureTransitionPeriod: "{{ kubelet_args.eviction_pressure_transition_period }}"
+    create: yes
+    insertbefore: EOF
+
+- name: Get containerLogMaxFiles value from the app_config.yaml for master nodes into custom.conf
+  become: yes
+  lineinfile:
+    path: "/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir/custom.conf"
+    regexp: '^containerLogMaxFiles:'
+    line: "containerLogMaxFiles: {{kubelet_args.container_log_max_files}}"
+
+
+- name: Get containerLogMaxSize value from the app_config.yaml for master nodes into custom.conf
+  become: yes
+  lineinfile:
+    path: "/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/20-cli-config-dir/custom.conf"
+    regexp: '^containerLogMaxSize:'
+    line: "containerLogMaxSize: {{kubelet_args.container_log_max_size}}"
+
+#------------End: kubelet-args settings-------------------
+
+- name: Re-loading rke2-server.service to read kubelet updates & waiting for 'Running' state
+  become: yes
+  service:
+    name: rke2-server.service
+    state : restarted
+    daemon_reload: yes
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10

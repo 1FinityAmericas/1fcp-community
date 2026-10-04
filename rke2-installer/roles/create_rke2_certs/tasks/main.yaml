@@ -1,0 +1,14 @@
+---
+- name: Get cert file status
+  stat:
+    path: /etc/pki/tls/certs/rke2-ca.crt
+  register: rke2_cert_file_status
+
+- name: Get private key file status
+  stat:
+    path: /etc/pki/tls/private/rke2-ca.key
+  register: rke2_key_file_status
+
+- name: create rke2 certs
+  import_tasks: create_rke2_certs.yaml
+  when: rke2_cert_file_status.stat.exists and rke2_key_file_status.stat.exists

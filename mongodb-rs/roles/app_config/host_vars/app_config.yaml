@@ -1,0 +1,129 @@
+mongodb_rs:
+  app_name: mongodb-rs
+  namespace: database
+    
+
+  ##-----------------psmdb-operator---------------------
+  psmdb_operator:
+    namespace: mongodb-operator
+    replicaCount: 1
+    image:
+      repository: percona-server-mongodb-operator
+      tag: 1.22.0
+      enabled: true
+    watchNamespaces: database
+
+    env:
+      resyncPeriod: 5s
+
+
+  ##-----------------psmdb-cluster---------------------
+  psmdb_cluster:
+    crVersion: 1.22.0
+
+    multiCluster:
+      enabled: false
+
+    image:
+      repository: percona-server-mongodb
+      tag: 7.0.31
+      enabled: true
+
+    tls:
+      mode: preferTLS
+      certValidityDuration: 2160h
+      allowInvalidCertificates: true
+
+    replsets:
+      rs0:
+        name: rs0
+        size: 3
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "1Gi"
+          requests:
+            cpu: "1000m"
+            memory: "500Mi"
+        volumeSpec:
+          pvc:
+            storageClassName: rancher-dynamic-local-path
+            resources:
+              requests:
+                storage: 3Gi
+        hidden:
+          enabled: false
+          size: 2
+          resources:
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeSpec:
+            pvc:
+              storageClassName: rancher-dynamic-local-path
+              resources:
+                requests:
+                  storage: 3Gi
+        nonvoting:
+          enabled: false
+          size: 3
+          resources:
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeSpec:
+            pvc:
+              storageClassName: rancher-dynamic-local-path
+              resources:
+                requests:
+                  storage: 3Gi
+        arbiter:
+          enabled: false
+          size: 1
+          resources:
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+            requests:
+              cpu: "1000m"
+              memory: "1Gi"
+
+
+  pmm:
+    enabled: false
+    image:
+      repository: pmm-client
+      tag: 3.6.0
+      enabled: false
+
+  logcollector:
+    enabled: false
+    image:
+      repository: fluentbit
+      tag: 4.0.1-2
+      enabled: false
+    resources:
+      requests:
+        memory: 100M
+        cpu: 200m
+
+
+systemUsers:
+  MONGODB_DATABASE_ADMIN_USER: databaseAdmin
+  MONGODB_DATABASE_ADMIN_PASSWORD: databaseAdmin123456
+  MONGODB_CLUSTER_ADMIN_USER: clusterAdmin
+  MONGODB_CLUSTER_ADMIN_PASSWORD: clusterAdmin123456
+  MONGODB_CLUSTER_MONITOR_USER: clusterMonitor
+  MONGODB_CLUSTER_MONITOR_PASSWORD: clusterMonitor123456
+  MONGODB_USER_ADMIN_USER: userAdmin
+  MONGODB_USER_ADMIN_PASSWORD: userAdmin123456
+
+external_registry:
+  username: automation
+  password: automation

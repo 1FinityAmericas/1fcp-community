@@ -1,0 +1,61 @@
+#
+- name: Identify master nodes
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Set master nodes fact
+      set_fact:
+        master_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubemasters']) | list }}"
+      register: master_nodes_fact
+
+    - name: Set master nodes in hostvars
+      add_host:
+        name: "{{ item }}"
+        groups: master_nodes_group
+      loop: "{{ master_nodes_fact.ansible_facts.master_nodes }}"
+
+- name: Run role on master nodes
+  hosts: master_nodes_group
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  tasks:
+    - name: Calculate the number of nodes in group1
+      set_fact:
+        total_master_count: "{{ groups['kubemasters'] | length | int }}"
+
+    - name: Calculate the number of nodes in group2
+      set_fact:
+        delete_master_count: "{{ groups['master_nodes_group'] | length | int }}"
+
+    - name: Calculate the threshold for deletion
+      set_fact:
+        deletion_threshold: "{{ (total_master_count | int) - ((total_master_count | int) // 2 + 1) }}"
+
+    - name: Fail if group1 has fewer nodes than group2
+      fail:
+        msg: "Can't Proceed. You are trying to delete more number of master than the allowed. It breaks down the entire cluster"
+      when: delete_master_count > deletion_threshold
+
+    - block:
+        - name: Execute the uninstall role
+          include_role:
+            name: uninstall_all_server_nodes
+
+        - name: Clean-up the hosts entries in the deleted node
+          become: yes
+          ignore_errors: yes
+          lineinfile:
+            path: /etc/hosts
+            regexp: '^.*{{ hostvars[item].host }}.*#1fcp$'
+            state: absent
+          loop: "{{ groups['kubenodes'] }}"
+
+        - name: Clean-up the registry DNS entry in the deleted node
+          become: yes
+          ignore_errors: yes
+          lineinfile:
+            path: /etc/hosts
+            regexp: '.*{{ ext_doc_reg_dns }}.*'
+            state: absent
+      when: delete_master_count <= deletion_threshold

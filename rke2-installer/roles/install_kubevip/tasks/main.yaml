@@ -1,0 +1,8 @@
+#file: role/install_kubevip.yaml/tasks/main.yaml
+- name: Set a fact with newly added master nodes
+  set_fact:
+    new_add_nodes: "{{ groups['new_nodes'] | select('in', groups['kubemasters']) | list }}"
+
+- name: installation of kube VIP for HA RKE2
+  import_tasks: install_kubevip.yaml
+  when: (( 'rke2' in ansible_run_tags ) or ( 'vip' in ansible_run_tags ) or ('add-node' in ansible_run_tags and new_add_nodes | length > 0)) 

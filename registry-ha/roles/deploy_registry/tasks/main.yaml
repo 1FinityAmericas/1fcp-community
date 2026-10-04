@@ -1,0 +1,3 @@
+---
+- name: deploy the local registry
+  import_tasks: deploy_registry.yaml

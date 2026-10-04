@@ -1,0 +1,21 @@
+---
+- name: Identify master nodes
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Set worker nodes fact
+      set_fact:
+        worker_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubeworkers']) | list }}"
+      register: worker_nodes_fact
+
+    - name: Set worker nodes in hostvars
+      add_host:
+        name: "{{ item }}"
+        groups: worker_nodes_group
+      loop: "{{ worker_nodes_fact.ansible_facts.worker_nodes }}"
+
+- name: Run role on worker nodes
+  hosts: worker_nodes_group
+
+  roles:
+    - uninstall_specific_agents

@@ -1,0 +1,27 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - Please execute the deployment script with one of the following options:
+          -   -t deploy-kafka    :  Install kafka helm chart only
+          -   -t cleanup-kafka    :  Uninstall kafka helm chart only and clean namespace
+          -   -t push-images     :  Manage HDFS images (identify, load, and push to registry)
+        tags: help
+      run_once: true
+
+- import_playbook: app_config.yaml
+  tags: [never, push-images, deploy-kafka, cleanup-kafka]
+
+- import_playbook: push_images.yaml
+  tags: [never, push-images, deploy-kafka]
+
+- import_playbook: deploy_kafka.yaml
+  tags: [never, deploy-kafka]
+
+- import_playbook: cleanup_kafka.yaml
+  tags: [never, cleanup-kafka]
+

@@ -1,0 +1,43 @@
+[localhost]
+127.0.0.1
+
+# ensure to have a sudo enabled user configured in all nodes
+[localhost:vars]
+ansible_connection=local
+ansible_user=virtuora
+ansible_group=virtuora
+ansible_password='fnc123'
+ansible_sudo_pass='fnc123'
+
+# The number of master nodes can be either one or three.
+# Plays will be adjusted according to the number of master nodes
+# uncomment master2 & master3 for a multi-master HA cluster
+[kubenodes]
+master1 ip=10.156.183.94  host=master1  group='node-config-master'   ip6=2001:abc:0:224:1c1d:c468:7f54:867f
+master2 ip=10.156.183.95   host=master2  group='node-config-master'  ip6=2001:abc:0:224:1c1d:c468:7f54:867g
+master3 ip=10.156.183.96   host=master3  group='node-config-master'  ip6=2001:abc:0:224:1c1d:c468:7f54:867h
+worker1 ip=10.156.183.97   host=worker1  group='node-config-compute'  ip6=2001:abc:0:224::12
+worker2 ip=10.156.183.98   host=worker2  group='node-config-compute'  ip6=2001:abc:0:224::13
+worker3 ip=10.156.183.99   host=worker3  group='node-config-compute'  ip6=2001:abc:0:224::14
+
+# ensure to have a sudo enabled user configured in all nodes
+[kubenodes:vars]
+ansible_ssh_private_key_file=./keyfile.pem
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_connection=ssh
+ansible_ssh_timeout=120
+ansible_user=virtuora
+ansible_group=virtuora
+ansible_password='fnc123'
+ansible_sudo_pass='fnc123'
+stack_type='single'
+
+#-------------------------Local Registry Settings--------------------------------
+# 'true' for deploying local registry
+ext_doc_reg_dns='fnc.fujitsu.reg'
+
+#-------------------------MVP Version------------------------------------------------
+#current release tag
+release_tag=fcp/1.1
+
+

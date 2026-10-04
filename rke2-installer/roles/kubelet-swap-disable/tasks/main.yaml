@@ -1,0 +1,4 @@
+# file: roles/kubelet-swap-disable/tasks/main.yml
+#
+- name: disable of kubelet swap config
+  import_tasks: kubelet-swap-disable.yaml

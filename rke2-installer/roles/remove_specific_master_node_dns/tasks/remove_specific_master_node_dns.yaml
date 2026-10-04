@@ -1,0 +1,12 @@
+---
+#
+- name: Set master nodes fact
+  set_fact:
+    master_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubemasters']) | list }}"
+
+- name: cleanup of specific node from /etc/hosts
+  become: yes
+  shell: 'sed -i "/{{ item }}.*#1fcp$/d" /etc/hosts'
+  ignore_errors: yes
+  with_items: "{{ master_nodes }}"
+

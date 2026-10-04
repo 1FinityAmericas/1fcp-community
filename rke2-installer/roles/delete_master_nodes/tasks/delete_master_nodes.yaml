@@ -1,0 +1,71 @@
+---
+# Tasks for deleting the master nodes
+#
+- name: Set master nodes fact
+  set_fact:
+    delete_master_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubemasters']) | list }}"
+
+- name: delete the master nodes
+  shell: "kubectl delete node {{ item }}"
+  with_items: "{{ delete_master_nodes }}"
+
+- name: Find the remaining master nodes
+  set_fact:
+    remaining_master_nodes: "{{ groups['kubemasters'] | difference(groups['delete_nodes']) }}"
+  when: delete_master_nodes | length > 0
+
+- name: Backup the YAML file
+  delegate_to: localhost
+  copy:
+    src: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml'
+    dest: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+  when: delete_master_nodes | length > 0
+
+- name: Write node IPs into nginx-ingress override file
+  delegate_to: localhost
+  lineinfile:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    insertafter: 'externalIPs:'  # regex to find the line containing the array-list group externalIPs below which we define the configurations.
+    line: "          - {{  hostvars[item]['ip'] }}"
+  with_items:
+    - "{{ remaining_master_nodes }}"
+  when: delete_master_nodes | length > 0
+
+- name: Write VIP into nginx-ingress override file if enabled
+  delegate_to: localhost
+  lineinfile:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    insertafter: 'externalIPs:'  # regex to find the line containing the array-list group externalIPs below which we define the configurations.
+    line: '          - {{ ha_rke2_vip_address }}'
+  when: "delete_master_nodes | length > 0 and hostvars[groups['primary_master_node_group'][0]].ha_rke2|bool == true"
+
+- name: pre-creating the path upto rke2 server manifests
+  become: yes
+  delegate_to: "{{ item }}"
+  file:
+    path: /var/lib/rancher/rke2/server/manifests/
+    state: directory
+  with_items:
+    - "{{ remaining_master_nodes }}"
+  when: delete_master_nodes | length > 0
+
+- name: copying the prepared nginx ingress override config to the manifests path
+  become: yes
+  delegate_to: "{{ item }}"
+  copy:
+    src: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    dest: "/var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml"
+  with_items:
+    - "{{ remaining_master_nodes }}"
+  when: delete_master_nodes | length > 0
+
+- name: Delete the backup file
+  delegate_to: localhost
+  file:
+    path: '{{ playbook_dir }}/roles/launch_server_node/files/rke2-ingress-nginx-config.yaml.bak'
+    state: absent
+  when: delete_master_nodes | length > 0
+
+- name: Apply /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml file with the left over nodes
+  shell: 'kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml -n kube-system'
+  when: delete_master_nodes | length > 0

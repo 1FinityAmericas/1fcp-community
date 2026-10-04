@@ -1,0 +1,54 @@
+{{- if and .Values.tls.enabled .Values.tls.ca.distributeToNodes }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: registry-ca-sync
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: registry-ca-sync
+  template:
+    metadata:
+      labels:
+        app: registry-ca-sync
+    spec:
+      hostPID: true
+      containers:
+      - name: sync-ca
+        image: quay.io/minio/mc:latest
+        securityContext:
+          privileged: true
+        command:
+          - /bin/sh
+          - -c
+          - |
+            mkdir -p /host/etc/containerd/certs.d/registry.{{ include "registry.namespace" . }}.svc.cluster.local
+            {{- if eq .Values.tls.ca.source "minio" }}
+            mc alias set myminio http://minio-lb.{{ include "registry.namespace" . }}.svc.cluster.local:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+            mc cp myminio/{{ .Values.tls.ca.bucketFile }} /host/etc/containerd/certs.d/registry.{{ include "registry.namespace" . }}.svc.cluster.local/ca.crt
+            {{- else if eq .Values.tls.ca.source "secret" }}
+            cp /ca/ca.crt /host/etc/containerd/certs.d/registry.{{ include "registry.namespace" . }}.svc.cluster.local/ca.crt
+            {{- end }}
+            echo "CA cert installed on node."
+            sleep 3600
+        envFrom:
+          - secretRef:
+              name: {{ .Values.credentials.name }}
+        volumeMounts:
+          - name: host-etc
+            mountPath: /host/etc
+          {{- if eq .Values.tls.ca.source "secret" }}
+          - name: ca
+            mountPath: /ca
+          {{- end }}
+      volumes:
+        - name: host-etc
+          hostPath:
+            path: /etc
+        {{- if eq .Values.tls.ca.source "secret" }}
+        - name: ca
+          secret:
+            secretName: {{ .Values.tls.ca.secretName }}
+        {{- end }}
+{{- end }}

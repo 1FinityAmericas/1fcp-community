@@ -1,0 +1,72 @@
+---
+- name: Set output directories using set_fact
+  set_fact:
+    output_dir: "{{ playbook_dir }}/cluster_info"        # Ensure playbook_dir is available
+    logs_dir: "{{ playbook_dir }}/cluster_info/logs"      # Define logs_dir using playbook_dir
+    output_tarball: "{{ playbook_dir }}/cluster_info/cluster_info.tar.gz"  # Define tarball path
+
+- name: Retrieve Nodes count to run overlay pods
+  shell: "kubectl get nodes --no-headers | awk '{print $1}'"
+  register: total_nodes
+
+- name: Ensure nodes_count is set
+  set_fact:
+    nodes_count: "{{ total_nodes.stdout_lines | length }}"
+
+- name: Debug the nodes_count
+  debug:
+    var: nodes_count
+
+- name: Apply the updated YAML file for deployment using template
+  template:
+    src: "{{ playbook_dir }}/roles/get_cluster_info/files/dns_resolver_dep.yaml.j2"
+    dest: "{{ playbook_dir }}/roles/get_cluster_info/files/dns_resolver_dep.yaml"
+  become: yes
+
+- name: Apply the Deployment to the cluster
+  shell: kubectl apply -f "{{ playbook_dir }}/roles/get_cluster_info/files/dns_resolver_dep.yaml"
+
+
+- name: Apply the Service to the cluster
+  shell: kubectl apply -f "{{ playbook_dir }}/roles/get_cluster_info/files/svc.yaml"
+
+- name: Remove old logs directory if it exists
+  file:
+    path: "{{ logs_dir }}"
+    state: absent
+
+- name: Create output directory
+  file:
+    path: "{{ output_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Create logs directory
+  file:
+    path: "{{ logs_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Run the bash script from the specified directory on the control node
+  script: "{{ playbook_dir }}/roles/get_cluster_info/files/debug_tools.sh"
+  environment:
+    OUTPUT_DIR: "{{ output_dir }}"  # Ensure this path is correctly set
+  delegate_to: localhost
+
+- name: Run the check_etcd_health.sh script from the specified directory on the control node
+  script: "{{ playbook_dir }}/roles/get_cluster_info/files/check_etcd_health.sh"
+  become: yes
+  environment:
+    OUTPUT_DIR: "{{ output_dir }}"  # Ensure this path is correctly set
+  delegate_to: localhost
+
+- name: Run the dns resolver script from the specified directory on the control node
+  script: "{{ playbook_dir }}/roles/get_cluster_info/files/dns_resolver.sh"
+  become: yes
+  environment:
+    OUTPUT_DIR: "{{ output_dir }}"  # Ensure this path is correctly set
+  delegate_to: localhost
+
+- name: Create a tarball of the logs directory
+  command: "tar -czf {{ output_tarball }} -C {{ output_dir }}/logs ."
+

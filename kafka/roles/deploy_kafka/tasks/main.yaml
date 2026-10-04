@@ -1,0 +1,5 @@
+---
+
+- name: Deploy Kafka
+  import_tasks: deploy_kafka.yaml
+

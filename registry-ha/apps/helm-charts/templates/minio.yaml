@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: {{ include "registry.namespace" . }}
+spec:
+  serviceName: minio
+  replicas: {{ .Values.minio.replicaCount }}
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      {{- if .Values.securityContextEnabled }}
+      securityContext:
+        {{- toYaml .Values.securityGroup | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ .Values.nodeAffinity.key }}
+                    operator: Exists
+        {{- end }}
+        {{- if ge (len .Values.minio.volumePaths) 3 }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["minio"]
+              topologyKey: kubernetes.io/hostname
+        {{- end }}
+      containers:
+      - name: minio
+        image: {{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}
+        imagePullPolicy: IfNotPresent
+        {{- if .Values.securityContextEnabled }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        args:
+          - server
+          #- "http://minio-{0...{{ sub .Values.minio.replicaCount 1 }}}.minio.{{ include "registry.namespace" . }}.svc.cluster.local/data"
+        {{- if eq (int .Values.minio.replicaCount) 1 }}
+          # Standalone mode /single-node minio cluster
+          - "/data"
+        {{- else }}
+          # Distributed 3-node minio cluster for 3-masters-k8s-cluster
+        {{- range $i := until (int .Values.minio.replicaCount) }}
+          - "http://minio-{{ $i }}.minio.{{ $.Release.Namespace }}.svc.cluster.local/data"
+        {{- end }}
+        {{- end }}
+
+        env:
+          - name: MINIO_ROOT_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.name }}
+                key: accesskey
+          - name: MINIO_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.name }}
+                key: secretkey
+        ports:
+          - containerPort: 9000
+        volumeMounts:
+          - name: data
+            mountPath: /data
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/unschedulable"
+          operator: "Exists"
+          effect: "NoSchedule"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ quote .Values.minio.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.storageSize }}

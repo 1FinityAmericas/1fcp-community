@@ -1,0 +1,8 @@
+---
+- hosts: primary_master_node_group
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+  roles:
+    - get_cluster_info
+

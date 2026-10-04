@@ -1,0 +1,16 @@
+---
+#
+
+- name: copy /etc/hosts file to /etc/backup-hosts if is not exists
+  become: yes
+  copy:
+    src: /etc/hosts
+    dest: /etc/backup-hosts
+
+
+- name: update hosts file
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['ip'] }}\t{{ hostvars[item]['host'] }} #1fcp"
+  with_items: "{{ groups['kubenodes'] }}"

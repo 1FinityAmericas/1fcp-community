@@ -1,0 +1,6 @@
+# file: roles/image_cleanup/tasks/main.yml
+#
+- name: image_cleanup
+  import_tasks: image_cleanup.yaml
+
+#

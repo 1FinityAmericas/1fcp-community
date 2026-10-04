@@ -1,0 +1,39 @@
+---
+deployment:
+  env: linux
+
+reg_ca_cert_exists: false
+docker_registry:
+  namespace: registry
+  image:
+    repository: fnc.fujitsu.reg
+    name: registry
+    tag: 3.0.0
+  registry:
+    image:      
+      repo: docker.io/library/registry
+      tag: 3.0.0
+      enabled: true
+  minio:
+    image:      
+      repo: quay.io/minio/minio
+      tag: RELEASE.2025-09-07T16-13-09Z
+      enabled: true
+      basePath: /var/lib/minio-vol/    
+  reg_path: /var/lib/docker/dynamic-local-path-mounts/
+  path: registry-ha
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  resources:
+    requests:
+      cpu: "0.5"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  proxy: false
+  proxy_reg: https://artifactory.fnc.fujitsu.com
+  proxy_username: automation
+  proxy_password: automation

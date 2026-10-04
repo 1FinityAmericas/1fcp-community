@@ -1,0 +1,34 @@
+---
+#----------------Tasks to disable kubelet swap confguration-------------------
+- name: Remove kubelet-arg block from /etc/rancher/rke2/config.yaml file
+  become: yes
+  shell: |
+    sed -i '/^kubelet-arg:/d' /etc/rancher/rke2/config.yaml  
+    sed -i '/config=/d' /etc/rancher/rke2/config.yaml
+  ignore_errors: yes
+
+- name: Remove kubelet drop-in config written by RKE2 from kubelet.conf.d
+  become: yes
+  file:
+    path: /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/10-cli-config.conf
+    state: absent
+ 
+- name: Remove worker kubelet swap configuration file from /etc/rancher/rke2
+  become: yes
+  file:
+    path: /etc/rancher/rke2/worker-kubelet.conf
+    state: absent
+
+#----------------End: Tasks to disable kubelet swap confguration-------------------
+
+#----------------------ReLoading of rke2 agent-----------------------
+- name: Re-loading rke2-agent.service to read kubelet updates & waiting for 'Running' state
+  become: yes
+  service:
+    name: rke2-agent.service
+    state : restarted
+    daemon_reload: yes
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10

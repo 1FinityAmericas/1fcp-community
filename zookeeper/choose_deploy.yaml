@@ -1,0 +1,34 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - "Zookeeper Ansible Deployment Package"
+          - "Please execute with one of the following tags:"
+          - "  -t deploy-zookeeper           : Deploy zookeeper service"
+          - "  -t health-check-zookeeper     : Verify deployment health"
+          - "  -t cleanup-zookeeper          : Remove deployment and cleanup"
+      tags: help
+      run_once: true
+
+# Configuration Management
+- import_playbook: app_config.yaml
+  tags: [never, app_config, push-images, deploy-zookeeper, health-check-zookeeper, cleanup-zookeeper]
+
+- import_playbook: push_images.yaml
+  tags: [never, push-images, deploy-zookeeper]
+
+# Service Deployment
+- import_playbook: deploy-zookeeper.yaml
+  tags: [never, deploy-zookeeper]
+
+# Health Check
+- import_playbook: health-check.yaml
+  tags: [never, health-check-zookeeper, deploy-zookeeper]
+
+# Cleanup
+- import_playbook: cleanup.yaml
+  tags: [never, cleanup-zookeeper]

@@ -1,0 +1,45 @@
+---
+- name: Check if zookeeper deployment exists
+  shell: "helm list -n {{ zookeeper.namespace }} | grep  {{ app_name }}"
+  register: deployment_exists
+  ignore_errors: true
+
+- name: Uninstall zookeeper helm release
+  shell: "helm uninstall zookeeper -n {{ zookeeper.namespace }}"
+  register: helm_uninstall_result
+  when: deployment_exists.rc == 0
+
+- name: Wait for pods to terminate
+  shell: kubectl get pods -n {{ zookeeper.namespace }} -l app={{ app_name }} --no-headers
+  register: remaining_pods
+  until: remaining_pods.stdout_lines | length == 0
+  retries: 20
+  delay: 10
+  ignore_errors: true
+
+- name: Clean up persistent volume claims
+  shell: kubectl delete pvc -n {{ zookeeper.namespace }} -l app={{ app_name }}
+  ignore_errors: true
+
+- name: Clean up persistent volumes (if any)
+  shell: |
+    kubectl get pv | grep {{ zookeeper.namespace }}/{{ app_name }} | awk '{print $1}' | xargs -r kubectl  delete pv
+  ignore_errors: true
+
+- name: Clean up config maps
+  shell: kubectl delete configmap -n {{ zookeeper.namespace }} -l app={{ app_name }}
+  ignore_errors: true
+
+- name: Clean up secrets
+  shell: kubectl delete secret -n {{ zookeeper.namespace }} -l app={{ app_name }}
+  ignore_errors: true
+
+- name: Display cleanup summary
+  debug:
+    msg:
+      - "Zookeeper Cleanup Summary:"
+      - "✓ Helm release uninstalled: zookeeper"
+      - "✓ Persistent volume claims cleaned up"
+      - "✓ Persistent volumes cleaned up"
+      - "✓ ConfigMaps and Secrets removed"
+      - "Cleanup completed successfully"

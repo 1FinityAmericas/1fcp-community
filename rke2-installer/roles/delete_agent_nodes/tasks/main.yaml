@@ -1,0 +1,4 @@
+# file: roles/delete_agent_nodes/tasks/main.yml
+#
+- name: delete the agent nodes
+  import_tasks: delete_agent_nodes.yaml

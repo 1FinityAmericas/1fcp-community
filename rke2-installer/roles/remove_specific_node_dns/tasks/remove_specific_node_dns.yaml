@@ -1,0 +1,10 @@
+---
+- name: Set agent nodes fact
+  set_fact:
+    agent_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubeworkers']) | list }}"
+
+- name: Cleanup specific nodes from /etc/hosts 
+  become: yes
+  shell: 'sed -i "/{{ item }}.*#1fcp$/d" /etc/hosts'
+  ignore_errors: yes
+  loop: "{{ agent_nodes }}"

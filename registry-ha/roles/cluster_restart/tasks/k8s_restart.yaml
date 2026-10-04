@@ -1,0 +1,6 @@
+---
+- name: Restart containerd (kubeadm / vanilla k8s)
+  systemd:
+    name: containerd.service
+    state: restarted
+

@@ -1,0 +1,227 @@
+---
+# Tasks for launching the agent nodes
+#
+- name: Get RKE2 tar ball folder name
+  shell: "echo {{ rke2_server_ver  }} | sed 's/v//' | sed 's/+/-/'"
+  register: version
+
+- name: copy the rke2 artifacts to node's home path
+  copy:
+    src: "{{ playbook_dir }}/apps/images/rke2-{{ version.stdout  }}/rke2-artifacts.tar"
+    dest: "{{ ansible_user_dir }}"
+
+- name: Unarchive artifacts in the node's home path
+  unarchive:
+    src: "{{ ansible_user_dir }}/rke2-artifacts.tar"
+    dest: "{{ ansible_user_dir }}"
+    remote_src: yes
+
+- name: Creates agent images path if does not exist
+  become: yes
+  file:
+    path: /var/lib/rancher/rke2/agent/images/
+    state: directory
+
+- name: copy the calico image artifacts to node's home path
+  become: yes
+  copy:
+    src: "{{ ansible_user_dir }}/rke2-artifacts/rke2-images-calico.linux-amd64.tar.gz"
+    dest: /var/lib/rancher/rke2/agent/images/
+    remote_src: yes
+
+- name: copy the core image artifacts to node's home path
+  become: yes
+  copy:
+    src: "{{ ansible_user_dir }}/rke2-artifacts/rke2-images-core.linux-amd64.tar.gz"
+    dest: /var/lib/rancher/rke2/agent/images/
+    remote_src: yes
+
+- name: run install.sh shell script
+  become: yes
+  shell: "INSTALL_RKE2_ARTIFACT_PATH={{ ansible_user_dir }}/rke2-artifacts INSTALL_RKE2_TYPE='agent' sh {{ ansible_user_dir }}/rke2-artifacts/install.sh"
+
+- name: Create rke2 path 
+  become: yes
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+
+- name: Writing the node token to a variable
+  delegate_to: "{{  hostvars[groups['primary_master_node_group'][0]].host  }}"
+  become: yes
+  shell: cat /var/lib/rancher/rke2/server/node-token
+  register: token
+
+- name: 'printing the token variable for the environment'
+  debug: 
+    msg: "Node Token: {{ token.stdout }}"
+
+- name: Adding dual stack RKE2 configuration for HA
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ ha_rke2_vip_hostname }}:9345"
+      #server: "https://{{ hostvars[groups['kubemasters'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+    create: true
+  when: ha_rke2|bool == true and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual'
+
+- name: Adding dual stack RKE2 configuration
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }},{{ hostvars[inventory_hostname]['ip6'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+    create: true
+  when: ha_rke2|bool != true and hostvars[groups['primary_master_node_group'][0]].stack_type == 'dual'
+
+- name: Adding single stack RKE2 configuration
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ ha_rke2_vip_hostname }}:9345"
+      #server: "https://{{ hostvars[groups['kubemasters'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+    create: true
+  when: ha_rke2|bool == true and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single'
+
+- name: Adding single stack RKE2 configuration
+  become: yes
+  blockinfile:
+    dest: /etc/rancher/rke2/config.yaml
+    marker: '# {mark} Adding RKE2 configuration'
+    block: |
+      server: "https://{{ hostvars[groups['primary_master_node_group'][0]].host }}:9345"
+      token: "{{ token.stdout }}"
+      node-ip: "{{ hostvars[inventory_hostname]['ip'] }}"
+      #CICADASW-1474
+      node-name: "{{ hostvars[inventory_hostname]['host'] }}"
+    create: true
+  when: ha_rke2|bool != true and hostvars[groups['primary_master_node_group'][0]].stack_type == 'single'
+
+- name: Stop firewalld service
+  become: yes
+  systemd:
+    name: firewalld
+    state: stopped
+  ignore_errors: yes
+
+- name: Stop iptables service
+  become: yes
+  systemd:
+    name: iptables
+    state: stopped
+  ignore_errors: yes
+
+- name: Disable iptables service
+  become: yes
+  systemd:
+    name: iptables
+    enabled: no
+  ignore_errors: yes
+
+- name: Disable firewalld service
+  become: yes
+  systemd:
+    name: firewalld
+    enabled: no
+  ignore_errors: yes
+
+- name: Enable service rke2-agent
+  become: yes
+  systemd:
+    name: rke2-agent.service
+    enabled: yes
+
+- name : wait untill rke2-server service is enabled
+  become: yes
+  command: systemctl is-enabled rke2-agent
+  register: rke2_enabled
+  until: rke2_enabled.stdout == "enabled"
+  retries: 6
+  delay: 10
+  changed_when: false
+
+- name: Ensure rke2-agent.service is in a running state
+  become: yes
+  service:
+    name: rke2-agent.service
+    state: started
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10
+
+- debug:
+    msg: '{{ ansible_user }}'
+
+- name: copy crictl.yaml to enable container tooling (1/3) - crictl
+  become: yes
+  copy:
+    src: /var/lib/rancher/rke2/agent/etc/crictl.yaml
+    dest: /etc/crictl.yaml
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_group }}'
+    mode: u+x
+    remote_src: yes
+
+- name: Update bashrc with RKE2 paths
+  blockinfile:
+    dest: "~/.bashrc"
+    block: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export CRI_CONFIG_FILE=/etc/crictl.yaml
+      alias  k=kubectl
+    marker: '# {mark} Adding RKE2 binary paths'
+
+- name: Update bashrc with RKE2 paths
+  become: yes
+  blockinfile:
+    dest: "~/.bashrc"
+    block: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export CRI_CONFIG_FILE=/etc/crictl.yaml
+      alias  k=kubectl
+    marker: '# {mark} Adding RKE2 binary paths'
+
+- name: source bashrc after update
+  shell: "source ~/.bashrc && echo $KUBECONFIG"
+  args:
+     executable: /bin/bash
+
+- name: source bashrc after update
+  become: yes
+  shell: "source ~/.bashrc && echo $KUBECONFIG"
+  args:
+     executable: /bin/bash
+
+- name: Removing image tarballs
+  shell: " rm -rf {{ ansible_user_dir }}/rke2-artifacts*"
+
+- name: waiting for the worker nodes to be in Ready state
+  shell: |
+    kubectl get nodes --no-headers \
+    | awk '$1 ~ /{{ groups["kubeworkers"] | join("|") }}/ && $2 != "Ready" {print $1}'
+  register: not_ready_workers
+  until: not_ready_workers.stdout == ""
+  retries: 12
+  delay: 10
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['kubemasters'][0] }}"
+

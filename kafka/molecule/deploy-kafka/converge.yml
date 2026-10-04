@@ -1,0 +1,75 @@
+---
+- name: Deploy Kafka Statefulset
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  
+  vars:
+    project_dir: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+    inventory_file: "{{ lookup('env', 'INVENTORY_FILE') | default('dep_hosts_kind') }}"
+    cluster_config: "{{ lookup('env', 'CLUSTER_CONFIG_FILE') | default('cluster_config.yaml') }}"
+    app_config: "{{ lookup('env', 'APP_CONFIG_FILE') | default('roles/app_config/host_vars/app_config.yaml') }}"
+  
+  tasks:
+    - name: Check if environment variables are set
+      set_fact:
+        use_env_vars: "{{ lookup('env', 'INVENTORY_FILE') != '' and lookup('env', 'CLUSTER_CONFIG_FILE') != '' and lookup('env', 'APP_CONFIG_FILE') != '' }}"
+
+    - name: Normalize file paths (handle absolute vs relative)
+      set_fact:
+        inventory_path: "{{ inventory_file if inventory_file.startswith('/') else project_dir ~ '/' ~ inventory_file }}"
+        cluster_config_path: "{{ cluster_config if cluster_config.startswith('/') else project_dir ~ '/' ~ cluster_config }}"
+        app_config_path: "{{ app_config if app_config.startswith('/') else project_dir ~ '/' ~ app_config }}"
+
+    - name: Display configuration source
+      debug:
+        msg: 
+          - "{{ 'Using configuration from environment variables' if use_env_vars else 'Loading configuration from molecule/configs folder' }}"
+          - "Inventory: {{ inventory_path }}"
+          - "Cluster config: {{ cluster_config_path }}"
+          - "App config: {{ app_config_path }}"
+
+    - name: Load configurations from files (if not in environment)
+      include_vars:
+        file: "{{ item }}"
+      loop:
+        - "{{ cluster_config_path }}"
+        - "{{ app_config_path }}"
+
+    - name: Set app_name dynamically from root folder name
+      set_fact:
+        app_name: "{{ project_dir | basename }}"
+
+    - name: Run kafka deployment
+      shell: |
+        cd {{ project_dir }}
+        ansible-playbook -i {{ inventory_path }}  choose_deploy.yaml -t deploy-{{ kafka.app_name }} \
+          --extra-vars 'app_config_file={{ app_config_path }} cluster_config_file={{ cluster_config_path }}'
+      register: deploy_result
+
+    - name: Show all sc
+      shell: "kubectl get sc"
+      register: sc_output
+      changed_when: false
+
+    - name: Display storage class
+      debug:
+        msg: "{{ sc_output.stdout }}"
+
+    - name: Show all pods
+      shell: "kubectl get pods -A"
+      register: pods_output
+      changed_when: false
+
+    - name: Display pod status table
+      debug:
+        msg: "{{ pods_output.stdout }}"
+
+    - name: Show all Kafka pods
+      shell: "kubectl get pods -n {{ kafka.namespace}} -l app=={{ kafka.app_name }}"
+      register: kafka_pods_output
+      changed_when: false
+
+    - name: Display Kafka pod status table
+      debug:
+        msg: "{{ kafka_pods_output.stdout }}"

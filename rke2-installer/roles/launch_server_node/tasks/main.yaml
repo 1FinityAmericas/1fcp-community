@@ -1,0 +1,14 @@
+# file: roles/launch_server_node/tasks/main.yml
+#
+- name: cleaning up server node during add-node
+  import_tasks: server_node_cleanup.yaml
+  when: "'add-node' in ansible_run_tags"
+
+- name: launching a server node
+  import_tasks: launch_server_node.yaml
+
+- name: creating secret to nginx-ingress-controller using custom tls.crt and tls.key
+  import_tasks: ingress-nginx-custom-secret.yaml
+  when:
+    - "'rke2' in ansible_run_tags"
+    - inventory_hostname == groups['primary_master_node_group'][0]

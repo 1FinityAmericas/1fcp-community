@@ -1,0 +1,4 @@
+# file: roles/drain_agent_nodes/tasks/main.yml
+#
+- name: drain the agent nodes
+  import_tasks: drain_agent_nodes.yaml

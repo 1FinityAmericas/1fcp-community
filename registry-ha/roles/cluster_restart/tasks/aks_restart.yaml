@@ -1,0 +1,7 @@
+---
+- name: Managed Kubernetes detected
+  debug:
+    msg: >
+      Managed Kubernetes aks detected.
+      Node-level restart is not supported in this release.
+

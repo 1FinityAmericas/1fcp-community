@@ -1,0 +1,36 @@
+#release_tag: cicada/7.0
+
+deployment:
+  env: linux
+
+docker_registry:
+  project: registry
+  reg_path: /var/lib/docker/dynamic-local-path-mounts/
+
+kubevip_images:
+  kubevip:
+    repo: ghcr.io/kube-vip
+    name: kube-vip
+    tag: v1.0.3
+    project: kube-system
+
+kubelet_args:
+  eviction_hard:
+    imagefs: 15%
+    nodefs: 15%
+  eviction_pressure_transition_period: 5m0s
+  container_log_max_files: 5
+  container_log_max_size: 10Mi
+
+cert_expiry_duration:
+  enable: false
+  days: 365
+
+custom_cert:
+  domain: fujitsu.com
+  rotate_duration_days: 365
+
+#The client ID of the azure managed identity
+azure_vip_fix:
+  enable: false
+  azure_client_id: b0a3dfb1-9849-4bc6-8b66-224e9e1812ca

@@ -1,0 +1,6 @@
+---
+#
+- hosts: primary_master_node_group
+  gather_facts: true
+  roles:
+    - deploy_nifi

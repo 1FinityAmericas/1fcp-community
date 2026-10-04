@@ -1,0 +1,9 @@
+# file: roles/taint_master_nodes/tasks/main.yml
+
+- name: set fact to taint master node
+  set_fact:
+    new_add_nodes: "{{ groups['new_nodes'] | select('in', groups['kubemasters']) | list }}"
+
+- name: master node taints
+  import_tasks: taint_master_nodes.yaml
+  when: (( 'rke2' in ansible_run_tags ) or ( 'rke2-install' in ansible_run_tags ) or ( 'vip' in ansible_run_tags ) or ('add-node' in ansible_run_tags and new_add_nodes | length > 0))

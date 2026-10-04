@@ -1,0 +1,6 @@
+---
+- name: Cleanup zookeeper deployment
+  hosts: primary_master_node_group
+  gather_facts: true
+  roles:
+    - cleanup-zookeeper

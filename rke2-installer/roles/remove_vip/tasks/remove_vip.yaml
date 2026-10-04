@@ -1,0 +1,35 @@
+---
+# 
+- set_fact:
+    curr_inv_host: "{{ inventory_hostname }}"
+    ansible_launch_node: "{{ ansible_play_hosts[0] }}"
+
+- name: "helm uninstall kube-vip-ds ..."
+  ignore_errors: yes
+  shell: 'helm delete -n {{ kubevip_images.kubevip.project }} kube-vip'
+  when: curr_inv_host == ansible_launch_node
+
+- name: get the string containing the vip address
+  ignore_errors: yes
+  shell: '/usr/sbin/ip a list {{ ha_rke2_interface }} | grep -i {{ ha_rke2_vip_address }}'
+  register: ip_prefix_str
+
+  #- debug:
+  #    msg: "{{ ip_prefix_str.stdout }}"
+  #
+- set_fact:
+    ip_prefix_str1: ""
+
+- set_fact:
+    prefix: "{{ ip_prefix_str.stdout.split(' ')[5].split('/')[1] }}"
+  when: ip_prefix_str.stdout != ""
+
+  #- debug:
+  #    msg: "{{ prefix }}"
+  #  when: ip_prefix_str.stdout != ""
+
+- name: remove the VIP address
+  ignore_errors: yes
+  become: yes
+  shell: "/usr/sbin/ip address del {{ ha_rke2_vip_address }}/{{ prefix }} dev {{ ha_rke2_interface }}"
+  when: ip_prefix_str.stdout != ""

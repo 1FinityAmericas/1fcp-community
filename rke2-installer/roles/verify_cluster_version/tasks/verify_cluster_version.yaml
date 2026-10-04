@@ -1,0 +1,76 @@
+---
+
+# Tasks for verifying cluster version
+- name: running command to get cluster version
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  shell: "kubectl version | grep -E 'Client|Server' | awk ' {print $3} '"
+  register: cluster_version
+
+
+# Task to check local docker regsitry status
+- name: Wait for docker registry pod to be ready (up to 5 minutes)
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  shell: >
+    kubectl get pods -n {{ rancher_dynamic.local_pv.project }} --no-headers
+  register: registry_pod_status
+  failed_when: registry_pod_status.rc != 0
+  when:
+    - rke2_server_ver in cluster_version.stdout_lines
+    - rke2_client_ver in cluster_version.stdout_lines
+  ignore_errors: yes
+
+
+
+- name: Wait for rancher PV pod to be ready (up to 5 minutes)
+  delegate_to: "{{ groups['primary_master_node_group'][0] }}"
+  shell: >
+    kubectl get pods -n {{ rancher_dynamic.local_pv.project }} --no-headers
+  register: rancher_pv_pod_status
+  failed_when: rancher_pv_pod_status.rc != 0
+  when:
+    - hostvars[groups['primary_master_node_group'][0]].rancher_localpv | bool
+    - rke2_server_ver in cluster_version.stdout_lines
+    - rke2_client_ver in cluster_version.stdout_lines
+  ignore_errors: yes
+
+
+- name: Notify that RKE2 cluster is already installed and running
+  debug:
+    msg: >
+      Stop executing rk2-install playbook as RKE2 cluster is already installed with client/server version {{ cluster_version.stdout_lines }}.
+      Please DO NOT use option --extra-vars 'version_check=true' to force installation.
+  when:
+    - registry_pod_status.stdout_lines is defined
+    - registry_pod_status.stdout_lines | length > 0
+    - registry_pod_status.stdout_lines | select('search', '1/1\\s+Running') | length == registry_pod_status.stdout_lines | length
+    - rancher_pv_pod_status.stdout_lines is defined
+    - rancher_pv_pod_status.stdout_lines | length > 0
+    - rancher_pv_pod_status.stdout_lines | select('search', '1/1\\s+Running') | length == rancher_pv_pod_status.stdout_lines | length
+
+
+- name: Verify and set rke2_install fact on all kubemasters
+  set_fact:
+    rke2_install: true
+  when:
+    - registry_pod_status.stdout_lines is defined
+    - registry_pod_status.stdout_lines | length > 0
+    - registry_pod_status.stdout_lines | select('search', '1/1\\s+Running') | length == registry_pod_status.stdout_lines | length
+    - rancher_pv_pod_status.stdout_lines is defined
+    - rancher_pv_pod_status.stdout_lines | length > 0
+    - rancher_pv_pod_status.stdout_lines | select('search', '1/1\\s+Running') | length == rancher_pv_pod_status.stdout_lines | length
+
+
+
+# Task to check local nexus regsitry status
+- name: waiting for nexus pod to be 'ready' state upto 5 minutes timeout
+  shell: "kubectl get pods -n nexus-local --no-headers  | awk '{ print $2, $3}' "
+  register: registry_pod
+  when: (hostvars[groups['primary_master_node_group'][0]].local_nexus_reg|bool == true) and (rke2_server_ver in  cluster_version.stdout_lines) and (rke2_client_ver in cluster_version.stdout_lines )
+
+- name: Verify and Stop playbook execution if rke2 cluster already installed with same version
+  fail:
+    msg: "Stop executing rk2-install playbook as rke2 cluster is already installed using client,server version {{ cluster_version.stdout_lines }},
+         Please DO NOT use option --extra-vars 'version_check=true' to do force installation "
+  when:
+  - ((registry_pod.stdout_lines is defined) and (registry_pod.stdout_lines|length > 0 )  and  (registry_pod.stdout | regex_findall('1/1 Running')|length == registry_pod.stdout_lines|length))
+    and ((rancher_pv_pod.stdout_lines is defined) and (rancher_pv_pod.stdout_lines|length > 0 )  and  (rancher_pv_pod.stdout | regex_findall('1/1 Running')|length == rancher_pv_pod.stdout_lines|length))

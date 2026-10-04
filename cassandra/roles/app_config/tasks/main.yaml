@@ -1,0 +1,63 @@
+# file: roles/app_config/tasks/main.yml
+
+- name: Load App Setup/configuration data
+  include_vars:
+    file: host_vars/app_config.yaml
+
+- name: Register ansible user id
+  shell: "id -u {{ ansible_user }}"
+  register: user_id
+
+- debug:
+    msg: "user_id -> {{user_id }}"
+
+- name: set ansible userid
+  set_fact:
+    ansible_user_id: "{{ user_id }}"
+
+- name: Register ansible group id
+  shell: "id -g {{ ansible_user }}"
+  register: group_id
+
+- debug:
+    msg: "group_id -> {{ group_id }}"
+
+- name: set ansible groupid
+  set_fact:
+    ansible_group_id: "{{ group_id }}"
+
+
+- name: set registry path
+  set_fact:
+    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+
+- name: determine cassandra name
+  block:
+    - name: no override set
+      ansible.builtin.set_fact:
+        cassandra_name: 'cassandra'
+      when:
+        - cassandra.fullnameOverride is undefined
+        - cassandra.nameOverride is undefined
+
+    - name: set using nameOverride
+      ansible.builtin.set_fact:
+        cassandra_name: "{{ 'cassandra-' + cassandra.nameOverride }}"
+      when:
+        - cassandra.fullnameOverride is undefined
+        - cassandra.nameOverride is defined
+
+    - name: set using fullnameOverride
+      ansible.builtin.set_fact:
+        cassandra_name: "{{ cassandra.fullnameOverride }}"
+      when: cassandra.fullnameOverride is defined
+- name: assert if geod then replicas at least 3
+  ansible.builtin.assert:
+    that:
+    - cassandra.cluster.replicaCount >= 3
+  when: cassandra.geod == "enable"
+
+- name: set app name
+  set_fact:
+    app_name: "{{ cassandra.app_name }}"
+

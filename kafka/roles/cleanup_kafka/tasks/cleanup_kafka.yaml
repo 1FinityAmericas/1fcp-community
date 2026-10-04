@@ -1,0 +1,61 @@
+---
+- name: Uninstall kafka helm release
+  shell: helm delete -n {{ kafka.namespace }} {{ app_name }}
+  ignore_errors: true
+
+- name: Delete kafka StatefulSet
+  shell: kubectl delete statefulset -n {{ kafka.namespace }} -l app={{ app_name }} --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete kafka Service
+  shell: kubectl delete service -n {{ kafka.namespace }} -l app={{ app_name }} --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete kafka ConfigMap 
+  shell: kubectl delete configmap -n {{ kafka.namespace }} -l app={{ app_name }} --grace-period=0 --force
+  ignore_errors: true
+
+- name: Delete kafka PVCs
+  shell: kubectl delete pvc -n {{ kafka.namespace }} -l app={{ app_name }} --grace-period=0 --force
+  ignore_errors: true
+
+- name: Wait for kafka PVCs to be deleted
+  shell: kubectl get pvc -n {{ kafka.namespace }} -l app={{ app_name }} --no-headers 2>/dev/null | wc -l
+  register: kafka_pvc_status
+  retries: 24
+  delay: 5
+  until: kafka_pvc_status.stdout | int == 0
+  ignore_errors: true
+
+- name: Patch stuck kafka PVCs to remove finalizers
+  shell: |
+    for pvc in $(kubectl get pvc -n {{ kafka.namespace }} -l app={{ app_name }} --no-headers 2>/dev/null | awk '{print $1}'); do
+      kubectl patch pvc -n {{ kafka.namespace }} "$pvc" -p '{"metadata":{"finalizers":null}}'
+    done
+  when: kafka_pvc_status.stdout | int > 0
+  ignore_errors: true
+
+- name: Delete kafka PVs
+  shell: |
+    for pv in $(kubectl get pv --no-headers 2>/dev/null | grep '{{ app_name }}' | awk '{print $1}'); do
+      kubectl delete pv "$pv" --grace-period=0 --force
+    done
+  ignore_errors: true
+
+- name: Wait for kafka PVs to be deleted
+  shell: kubectl get pv --no-headers 2>/dev/null | grep '{{ app_name }}' | wc -l
+  register: kafka_pv_status
+  retries: 24
+  delay: 5
+  until: kafka_pv_status.stdout | int == 0
+  ignore_errors: true  
+
+- name: Patch stuck kafka PVs to remove finalizers
+  shell: |
+    for pv in $(kubectl get pv --no-headers 2>/dev/null | grep '{{ app_name }}' | awk '{print $1}'); do
+      kubectl patch pv "$pv" -p '{"metadata":{"finalizers":null}}'
+    done
+  when: kafka_pv_status.stdout | int > 0
+  ignore_errors: true
+
+

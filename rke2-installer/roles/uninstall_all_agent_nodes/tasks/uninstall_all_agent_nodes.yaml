@@ -1,0 +1,136 @@
+---
+- set_fact:
+    complete_stmt: '+ rm -f -- /usr/local/bin/rke2-uninstall.sh'
+
+- name: "check if rke2-uninstall.sh is present"
+  stat:
+    path: /usr/local/bin/rke2-uninstall.sh
+  register: uninstall_script
+
+- name: Check if uninstall script exists in role files directory
+  delegate_to: localhost
+  stat:
+    path: "{{ playbook_dir }}/roles/uninstall_all_agent_nodes/files/rke2-uninstall.sh"
+  register: role_uninstall_script
+  run_once: true
+
+- name: Copy uninstall script from node to role files directory
+  fetch:
+    src: /usr/local/bin/rke2-uninstall.sh
+    dest: "{{ playbook_dir }}/roles/uninstall_all_agent_nodes/files/rke2-uninstall.sh"
+    flat: yes
+    validate_checksum: no
+  when: not role_uninstall_script.stat.exists
+
+  #Block for uninstallation  when  rke2-uninstall.sh exists
+- name: Prepare uninstallation ...
+  block:
+    - name: Uninstalling worker
+      become: yes
+      shell: "sh /usr/local/bin/rke2-uninstall.sh"
+      register: cleanup
+
+    - name: Wait for completion...
+      debug:
+        msg: "Worker uninstalled !"
+      until: "complete_stmt in cleanup.stderr_lines"
+      retries: 30
+      delay: 10
+      ignore_errors: yes
+  when: uninstall_script.stat.exists
+
+#Validate broken/unremoved artifacts/paths, if found copy uninstall.sh and re-run uninstall. Also check environments where paths are disk mounted and failed to be cleaned with busy error with rke2-uninstall.sh
+- name: (Previously-uninstalled-Host) checking for any left-over artifacts or folders that need cleanup
+  vars:
+    folders:
+      - /var/lib/kubelet
+      - /var/lib/rancher
+      - /etc/rancher
+      - /var/lib/containers
+    binaries:
+      - containerd
+      - crictl
+      - ctr
+      - kubectl
+      - kubelet
+      #- runc
+      #runc commented as it is observed pre-installed explicitly in all nodes
+  block:
+    - name: (Previously-uninstalled-Host) Iterate RKE2 folders"
+      stat:
+        path: "{{ item }}"
+      with_items: " {{ folders }} "
+      register: rke_artifacts
+
+    - name: (Previously-uninstalled-Host) Confirm RKE2 folders if any that are not removed
+      set_fact:
+        folder_exists_count: "{{ rke_artifacts.results | selectattr('stat.exists', 'equalto', True) | list | length }}"
+        item_values: "{{ rke_artifacts.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list }}"
+
+    - name: (Previously-uninstalled-Host) Iterate RKE2 binaries
+      shell: "command -v  {{ item }}"
+      with_items: " {{ binaries }} "
+      register: binaries_check
+      ignore_errors: yes
+
+    - name: (Previously-uninstalled-Host) Confirm RKE2 binaries if any that are not removed
+      set_fact:
+        binaries_exists_count: "{{ binaries_check.results | selectattr('rc', 'equalto', 0) | list | length }}"
+        binaries_that_exists: "{{ binaries_check.results | selectattr('rc', 'equalto', 0) | map (attribute='item') | list }}"
+
+    - debug:
+        msg:
+          - "folder_exists_count: {{ folder_exists_count }}"
+          - "binaries_exists_count: {{ binaries_exists_count }}"
+          - "binaries_that_exists: {{ binaries_that_exists }}"
+
+    - name: (Previously-uninstalled-Host) Confirm uninstallation status when previous installation is intact.
+      debug:
+        msg: "Worker clean uninstalled already..."
+      when: folder_exists_count|int == 0 and binaries_exists_count|int == 0
+
+    - name: (Previously-uninstalled-Host) Confirm uninstallation status if incomplete/broken installation detected.
+      block:
+        - name: clear folder contents that exists in specific customer environments having mounted-non-removable paths
+          become: yes
+          file:
+            state: absent
+            path: "{{ item }}"
+          with_items: "{{ folders }}"
+          register: results
+          ignore_errors: yes
+          until: results is succeeded
+          retries: 5
+          delay: 10            
+       
+        - name: forcefully unmount and remove any remaining busy folders
+          become: yes
+          shell: |
+            for dir in {{ folders | join(' ') }}; do
+              if [ -d "$dir" ]; then
+                findmnt -n -R -o TARGET "$dir" 2>/dev/null | sort -r | xargs -r umount -l
+                rm -rf "$dir"
+              fi
+            done
+          when: results is failed
+          ignore_errors: yes            
+
+        - name: Copy the rke2-uninstall.sh to prepare for uninstallation
+          become: yes
+          copy:
+            src: "{{ playbook_dir }}/roles/uninstall_all_agent_nodes/files/rke2-uninstall.sh"
+            dest: /usr/local/bin/
+
+        - name: Uninstalling worker
+          become: yes
+          shell: "sh /usr/local/bin/rke2-uninstall.sh"
+          register: cleanup
+
+        - name: Wait for completion...
+          debug:
+            msg: "Worker uninstalled !"
+          until: "complete_stmt in cleanup.stderr_lines"
+          retries: 30
+          delay: 10
+          ignore_errors: yes
+      when: folder_exists_count|int > 0 or binaries_exists_count|int > 0

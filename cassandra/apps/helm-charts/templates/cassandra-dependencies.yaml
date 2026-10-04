@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cassandra-config
+  labels: {{- include "cassandra.labels" . | nindent 4 }}
+data:
+  cassandra-env.sh: |-
+{{ tpl (.Files.Get "resources/config/cassandra-env.sh") . | indent 4 }}
+  logback.xml: |-
+{{ tpl (.Files.Get "resources/config/cassandra-logback.xml") . | indent 4 }}

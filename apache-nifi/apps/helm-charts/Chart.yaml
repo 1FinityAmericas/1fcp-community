@@ -1,0 +1,16 @@
+# File: helm/nifi-7-2/Chart.yaml
+apiVersion: v2
+name: apache-nifi
+description: Apache NiFi 2.7.2 multinode cluster chart
+version: 1.1
+appVersion: "2.9.0"
+type: application
+keywords:
+  - nifi
+  - apache
+  - dataflow
+  - single-user
+  - kubernetes
+home: https://nifi.apache.org/
+sources:
+  - https://github.com/apache/nifi

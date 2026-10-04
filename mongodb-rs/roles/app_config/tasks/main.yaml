@@ -1,0 +1,40 @@
+# file: roles/app_config/tasks/main.yml
+
+- name: Set ingress host ip
+  set_fact:
+    ingress_ip: "{{ hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+
+- name: Load App Setup/configuration data
+  include_vars:
+    file: host_vars/app_config.yaml
+
+- name: Register ansible user id
+  shell: "id -u {{ ansible_user }}"
+  register: user_id
+
+- debug:
+    msg: "user_id -> {{user_id }}"
+
+- name: set ansible userid
+  set_fact:
+    ansible_user_id: "{{ user_id }}"
+
+- name: Register ansible group id
+  shell: "id -g {{ ansible_user }}"
+  register: group_id
+
+- debug:
+    msg: "group_id -> {{ group_id }}"
+
+- name: set ansible groupid
+  set_fact:
+    ansible_group_id: "{{ group_id }}"
+
+- name: set registry path
+  set_fact:
+    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+
+- name: set app name
+  set_fact:
+    app_name: "{{ mongodb_rs.app_name }}"

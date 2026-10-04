@@ -1,0 +1,26 @@
+---
+# Tasks for drain the agent nodes
+#
+- name: Set worker nodes fact
+  set_fact:
+    agent_nodes: "{{ groups['delete_nodes'] | select('in', groups['kubeworkers']) | list }}"
+
+- name: cordon the nodes
+  shell: "kubectl cordon {{ item }}"
+  with_items: "{{ agent_nodes }}"
+  when: agent_nodes | length > 0
+
+- name: waiting for agents to be cordoned
+  pause:
+    minutes: 1
+  when: agent_nodes | length > 0
+
+- name: Draining the nodes that are in Ready state
+  loop: "{{ agent_nodes }}"
+  loop_control:
+    loop_var: node
+  include_tasks: drain_node.yaml
+  vars:
+    node: "{{ node }}"
+  when: agent_nodes | length > 0
+

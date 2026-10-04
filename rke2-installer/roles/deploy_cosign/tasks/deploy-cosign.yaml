@@ -1,0 +1,11 @@
+---
+#Installing cosign package
+- name: 'copy cosign executable to the bin path'
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/deploy_cosign/files/cosign-linux-amd64"
+    dest: /usr/local/bin/cosign
+    mode: +x
+
+- name: create a secrets for cosign keys
+  shell: kubectl apply -f {{ playbook_dir }}/roles/deploy_cosign/files/cosign-secrets.yaml

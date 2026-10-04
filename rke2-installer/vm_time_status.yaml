@@ -1,0 +1,9 @@
+---
+
+ - hosts: kubenodes
+   gather_facts: yes
+   #environment:
+    #  PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+   roles:
+    - vm_time_status

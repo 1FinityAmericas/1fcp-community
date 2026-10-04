@@ -1,0 +1,47 @@
+---
+# file: global-configuration.yml
+
+- name: Get primary hostname
+  hosts: localhost
+  gather_facts: yes  # Needed for ansible_all_ipv4_addresses
+  tasks:
+    - name: Collect matching hostname details
+      set_fact:
+        primary_nodes: >-
+          {{
+            groups['kubenodes'] | map('extract', hostvars) | selectattr('ip', 'in', ansible_all_ipv4_addresses) | list
+          }}
+      when: "'primary_master_node_group' not in groups"
+    - name: Add primary host to primary_node_group
+      add_host:
+        name: "{{ item.inventory_hostname }}"
+        groups: primary_master_node_group
+      loop: "{{ primary_nodes }}"
+      when: "'primary_master_node_group' not in groups"
+
+- name: Get secondary master hostnames
+  hosts: localhost
+  gather_facts: yes  # Needed for ansible_all_ipv4_addresses
+  tasks:
+    - name: Collect remaining master nodes (excluding localhost)
+      set_fact:
+        secondary_master_nodes: >-
+          {{
+           groups['kubenodes']
+           | map('extract', hostvars)
+           | selectattr('group', 'equalto', 'node-config-master')
+           | rejectattr('ip', 'in', ansible_all_ipv4_addresses)
+           | list
+          }}
+    - name: Add secondary masters to secondary_master_node_group
+      add_host:
+        name: "{{ item.inventory_hostname }}"
+        groups: secondary_master_node_group
+      loop: "{{ secondary_master_nodes }}"
+
+
+- hosts: kubenodes
+  #gather_facts: False
+
+  roles:
+    - app_config

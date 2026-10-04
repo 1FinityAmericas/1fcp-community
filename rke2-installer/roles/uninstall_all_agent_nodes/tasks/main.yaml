@@ -1,0 +1,4 @@
+# file: roles/uninstall_rke2_agent_nodes/tasks/main.yml
+#
+- name: uninstall the agent nodes
+  import_tasks: uninstall_all_agent_nodes.yaml

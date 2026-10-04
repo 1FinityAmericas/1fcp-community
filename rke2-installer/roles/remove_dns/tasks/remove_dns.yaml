@@ -1,0 +1,33 @@
+---
+#Task achieves following:
+#Removing registrys' ca-cert and updating ca_truststore on all nodes
+#Removes hosts DNS entries in all nodes finally
+#
+# ────────────────────────────────────────Registry data flush───────────────────────────────────────────────────────────────────────────────────────────────
+- name: Remove Registry CA cert rootCA-loc-reg.crt on all nodes
+  become: yes
+  ansible.builtin.file:
+    path: /etc/pki/ca-trust/source/anchors/rootCA-loc-reg.crt
+    state: absent
+  register: file_removal
+
+- name: Update CA trust store on all nodes after Registry CA cert was removed
+  become: yes
+  ansible.builtin.command: update-ca-trust extract
+  when: file_removal.changed
+
+# ────────────────────────────────────────Remove '/etc/hosts' entries───────────────────────────────────────────────────────────────────────────────────────────────
+- name: Remove rke2 host entry
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^.*{{ item }}.*#1fcp$'
+    state: absent
+  with_items: "{{ groups['kubenodes'] }}"
+
+- name: Remove external docker registry entry only when local registry is True/enabled
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '^\S+\s+.*\b{{ ext_doc_reg_dns }}\b.*$'

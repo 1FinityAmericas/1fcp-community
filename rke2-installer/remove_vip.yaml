@@ -1,0 +1,8 @@
+---
+#
+- hosts: kubemasters
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+
+  roles:
+    - remove_vip

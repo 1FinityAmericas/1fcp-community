@@ -1,0 +1,73 @@
+---
+#----------------Tasks for vefriy swap enable-------------------
+- name: Check if swap enabled
+  shell: "stat -fc %T /sys/fs/cgroup/"
+  register: cgroup
+
+- name: Stop ansible play execution cgroupv2 is not supported on node.
+  fail:
+    msg: "NodeSwap is supported for cgroup v2 only. For Kubernetes v1.28, using swap along with cgroup v1 is no longer supported"
+  when:
+  - cgroup.stdout == "tmpfs"
+#----------------End: Tasks for vefriy swap enable-------------------
+
+#------------Start: Update kubelet swap settings-------------------
+
+- name: Check if swap kubelet 'config' path is already defined
+  become: yes
+  lineinfile:
+    state: absent
+    path: /etc/rancher/rke2/config.yaml
+    regexp: '^(\s+- "config=).*?$'
+  check_mode: true
+  changed_when: false # This just makes things look prettier in the logs
+  register: swap_conf
+
+- name: Copy kubelet configuration file on swap worker nodes
+  become: yes
+  copy:
+    src: "{{ playbook_dir }}/roles/kubelet-swap-enable/files/worker-kubelet.conf"
+    dest: "/etc/rancher/rke2/worker-kubelet.conf" 
+
+- name: Check if kubelet-arg key already exists
+  become: yes
+  lineinfile:
+    path: /etc/rancher/rke2/config.yaml
+    regexp: '^kubelet-arg:'
+    state: absent
+  check_mode: true
+  changed_when: false
+  register: kubelet_arg_key
+
+- name: Append kubelet-arg block at end if missing
+  become: yes
+  lineinfile:
+    path: /etc/rancher/rke2/config.yaml
+    insertbefore: EOF
+    line: 'kubelet-arg:'
+  when:
+    - swap_conf.found == 0
+    - kubelet_arg_key.found == 0
+
+- name: Insert worker kubelet configurations path into file /etc/rancher/rke2/config.yaml
+  become: yes
+  lineinfile:
+    path: /etc/rancher/rke2/config.yaml
+    insertafter: '^kubelet-arg:'  # regex to find the line containing the array-list group kubelet-arg below which we define the configurations.
+    line: '  - "{{ item }}"'
+  with_items:
+    - "config=/etc/rancher/rke2/worker-kubelet.conf"
+  when: swap_conf.found == 0
+#------------End: kubelet image-GarbageCollection settings-------------------
+#
+- name: Re-loading rke2-agent.service to read kubelet updates & waiting for 'Running' state
+  become: yes
+  service:
+    name: rke2-agent.service
+    state : restarted
+    daemon_reload: yes
+  register: myserviceDetails
+  until: myserviceDetails.status.ActiveState is defined and myserviceDetails.status.ActiveState == "active"
+  retries: 90
+  delay: 10
+  when: swap_conf.found == 0

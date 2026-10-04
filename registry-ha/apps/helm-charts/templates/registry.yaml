@@ -1,0 +1,255 @@
+{{- $masters := int .Values.masterNodes }}
+{{- $replicas := ternary 1 2 (eq $masters 1) }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: registry
+  namespace: {{ include "registry.namespace" . }}
+spec:
+  replicas: {{ $replicas }}
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      {{- if .Values.securityContextEnabled }}
+      securityContext:
+        {{- toYaml .Values.securityGroup | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ .Values.nodeAffinity.key }}
+                    operator: {{ .Values.nodeAffinity.operator }}
+        {{- end }}
+        {{- if ge (len .Values.minio.volumePaths) 3 }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["registry"]
+              topologyKey: kubernetes.io/hostname
+        {{- end }}
+      initContainers:
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "minio") }}
+        - name: fetch-registry-certs
+          image: {{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.securityContextEnabled }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Fetching registry TLS certs from MinIO..."
+              mc alias set myminio http://minio-lb.{{ include "registry.namespace" . }}.svc.cluster.local:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+              mc cp myminio/{{ .Values.tls.bucketPath }}/tls.crt /certs/tls.crt
+              mc cp myminio/{{ .Values.tls.bucketPath }}/tls.key /certs/tls.key
+          envFrom:
+            - secretRef:
+                name: {{ .Values.credentials.name }}
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+        {{- end }}
+        # start registry pods only after mino-lb is healthy.
+        - name: wait-for-minio
+          image: {{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.securityContextEnabled }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          #########################exhaustive health check##########################
+          #command:
+          #  - /bin/sh
+          #  - -c
+          #  - |
+          #      set -e
+
+          #      ns="{{ include "registry.namespace" . }}"
+          #      replicas="{{ .Values.minio.replicaCount }}"
+
+          #      echo "Detected MinIO replica count = $replicas"
+
+          #      # ------------------------------
+          #      # Determine dynamic quorum
+          #      # ------------------------------
+          #      if [ "$replicas" -eq 1 ]; then
+          #        quorum=1
+          #      else
+          #        quorum=$((replicas / 2 + 1))
+          #      fi
+
+          #      echo "Dynamic quorum requirement = $quorum nodes"
+
+          #      attempts=300
+
+          #      for attempt in $(seq 1 $attempts); do
+          #        ready_count=0
+
+          #        # -------------------------------------------------------
+          #        # Check readiness of each MinIO pod individually
+          #        # -------------------------------------------------------
+          #        for i in $(seq 0 $((replicas - 1))); do
+          #          if curl -sf http://minio-$i.minio.$ns.svc.cluster.local:9000/minio/health/ready >/dev/null; then
+          #            ready_count=$((ready_count + 1))
+          #          fi
+          #        done
+
+          #        echo "MinIO: $ready_count/$replicas pods healthy (quorum=$quorum)"
+
+          #        # -------------------------------------------------------
+          #        # Quorum logic (replicas=1 → quorum=1, replicas=3 → quorum=2)
+          #        # -------------------------------------------------------
+          #        if [ "$ready_count" -ge "$quorum" ]; then
+          #          
+          #          # In distributed mode, confirm cluster-level quorum
+          #          if [ "$replicas" -gt 1 ]; then
+          #            if curl -sf http://minio-lb.$ns.svc.cluster.local:9000/minio/health/cluster >/dev/null; then
+          #              echo "✔ MinIO distributed cluster quorum achieved — proceeding."
+          #              exit 0
+          #            else
+          #              echo "Cluster quorum endpoint not ready yet..."
+          #            fi
+
+          #          else
+          #            # Single replica: node readiness is enough
+          #            echo "✔ Single-node MinIO healthy — proceeding."
+          #            exit 0
+          #          fi
+          #        fi
+
+          #        echo "Waiting for MinIO quorum... attempt $attempt/$attempts"
+          #        sleep 5
+          #      done
+
+          #      echo "❌ ERROR: MinIO quorum NOT reached within timeout"
+          #      exit 1
+  
+          ######################          
+          command:
+            - /bin/sh
+            - -c
+            - |
+              ns="{{ include "registry.namespace" . }}"
+              echo "Waiting for MinIO-lb to repsond..."
+              # Try 300 times x sleep 1 = 300 seconds
+              secs=300
+              for i in $(seq 1 $secs); do
+                if curl -sf http://minio-lb.${ns}.svc.cluster.local:9000/minio/health/cluster; then
+                  echo "MinIO-cluster is healthy!"
+                  break
+                fi
+                echo "Attempt $i/$secs: MinIO-cluster not ready yet..."
+                sleep '5'
+              done
+
+              if [ "$i" -eq ${secs} ]; then
+                echo "ERROR: MinIO-cluster did not become healthy within ${secs} seconds"
+                exit 1
+              fi
+
+      containers:
+        - name: registry
+          image: {{ .Values.registry.image.repository }}:{{ .Values.registry.image.tag }}
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.securityContextEnabled }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REGISTRY_HTTP_ADDR
+              value: :5000
+            - name: REGISTRY_STORAGE
+              value: s3
+            - name: REGISTRY_STORAGE_S3_REGION
+              value: {{ .Values.registry.region }}
+            - name: REGISTRY_STORAGE_S3_BUCKET
+              value: {{ .Values.registry.bucket }}
+            - name: REGISTRY_STORAGE_S3_ACCESSKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.name }}
+                  key: accesskey
+            - name: REGISTRY_STORAGE_S3_SECRETKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.name }}
+                  key: secretkey
+            - name: REGISTRY_HTTP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.name }}
+                  key: http-secret
+            - name: REGISTRY_STORAGE_S3_REGIONENDPOINT
+              value: http://minio-lb.{{ include "registry.namespace" . }}.svc.cluster.local:9000
+              #value: {{ .Values.registry.endpoint }}
+            - name: REGISTRY_STORAGE_S3_REDIRECT_DISABLE
+              value: "true"
+            - name: REGISTRY_STORAGE_REDIRECT_DISABLE
+              value: "true"              
+            - name: REGISTRY_STORAGE_S3_FORCEPATHSTYLE
+              value: "true"
+            - name: REGISTRY_STORAGE_S3_SECURE
+              value: "false"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            - name: REGISTRY_LOG_LEVEL
+              value: {{ .Values.registry.logLevel | default "info" }}
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
+              
+            {{- if .Values.tls.enabled }}
+            - name: REGISTRY_HTTP_TLS_CERTIFICATE
+              value: /certs/tls.crt
+            - name: REGISTRY_HTTP_TLS_KEY
+              value: /certs/tls.key
+            {{- end }}
+
+            {{- if .Values.proxy_reg.enabled }}
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: https://artifactory.fnc.fujitsu.com
+            - name: REGISTRY_PROXY_USERNAME
+              value: jfrogread
+            - name: REGISTRY_PROXY_PASSWORD
+              value: R3adonly
+            {{- end }}
+            
+          volumeMounts:
+            - name: registry-cache
+              mountPath: /var/lib/registry
+            {{- if .Values.tls.enabled }}
+            - name: certs
+              mountPath: /certs
+            {{- end }}
+      volumes:
+        - name: registry-cache
+          emptyDir: {}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "secret") }}
+        - name: certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+        {{- else if and .Values.tls.enabled (eq .Values.tls.source "minio") }}
+        - name: certs
+          emptyDir: {}
+        {{- end }}
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/unschedulable"
+          operator: "Exists"
+          effect: "NoSchedule"
