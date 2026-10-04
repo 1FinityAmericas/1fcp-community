@@ -1,548 +1,305 @@
-# MongoDB Database Deployment Suite
+# MongoDB Replica Set Helm Charts
 
-This suite provides Helm charts for deploying MongoDB database clusters on Kubernetes using the Percona Operator for MongoDB. The deployment follows a logical database flow: Operator → Database Cluster.
+Helm charts for deploying a MongoDB Replica Set on Kubernetes using the **Percona Server for MongoDB Operator** as part of the **1Finity Cloud Platform (1FCP)**. The deployment follows a two-step flow: Operator → Database Cluster.
 
-##  Available Charts
+## Table of Contents
 
-- **mongodb-rs-operator**: Deploys the Percona MongoDB Operator
-- **mongodb-rs**: Deploys MongoDB replica set clusters (requires operator)
+- [Available Charts](#available-charts)
+- [Prerequisites](#prerequisites)
+- [Deployment Flow](#deployment-flow)
+- [Parameters](#parameters)
+- [Installation](#installation)
+- [Uninstallation](#uninstallation)
 
-##  Deployment Flow
+---
 
-### Step 1: Deploy MongoDB Operator
-First, deploy the MongoDB Operator which will manage your MongoDB clusters:
+## Available Charts
 
-```bash
-# Navigate to operator chart
-cd mongodb-rs-operator
+| Chart | Description |
+|---|---|
+| `mongodb-rs-operator/` | Deploys the Percona MongoDB Operator |
+| `mongodb-rs/` | Deploys the MongoDB replica set cluster (requires operator) |
 
-# Follow the operator deployment instructions
-# See: mongodb-rs-operator/README.md
+---
+
+## Prerequisites
+
+| Requirement | Version / Note |
+|---|---|
+| Kubernetes | 1.32+ |
+| Helm | v3+ |
+| StorageClass | At least one configured in the cluster |
+| Container registry access | Required |
+| kubectl | Configured with cluster access |
+
+---
+
+## Deployment Flow
+
+```
+Step 1: Deploy mongodb-rs-operator
+          ↓
+Step 2: Deploy mongodb-rs (replica set cluster)
 ```
 
-### Step 2: Deploy MongoDB Database Cluster
-After the operator is running, deploy your MongoDB replica set:
+---
+
+## Parameters
+
+### Cluster (mongodb-rs)
+
+#### Core
+
+| Parameter | Description | Default |
+|---|---|---|
+| `crVersion` | Percona CR manifest version | `1.22.0` |
+| `pause` | Safely stop the PSMDB cluster | `false` |
+| `unmanaged` | Start cluster without operator management (cross-cluster replication) | `false` |
+| `updateStrategy` | Pod update strategy (`SmartUpdate`, `RollingUpdate`, `OnDelete`) | `SmartUpdate` |
+| `image.repository` | PSMDB container image repository | `percona-server-mongodb` |
+| `image.tag` | PSMDB image tag | `7.0.31` |
+| `imagePullPolicy` | Image pull policy | `IfNotPresent` |
+| `initImage.repository` | Init image repository | `percona-server-mongodb-operator` |
+| `initImage.tag` | Init image tag | `1.22.0` |
+
+#### Storage Scaling
+
+| Parameter | Description | Default |
+|---|---|---|
+| `storageScaling.enableVolumeScaling` | Allow PVC resize | `false` |
+| `storageScaling.enableExternalAutoscaling` | Suppress storage discrepancy error if external autoscaling enabled | `false` |
+| `storageScaling.autoscaling.enabled` | Enable automatic storage expansion | `false` |
+| `storageScaling.autoscaling.triggerThresholdPercent` | Disk usage % that triggers expansion (50–95) | `80` |
+| `storageScaling.autoscaling.growthStep` | Storage to add when threshold exceeded | `"2Gi"` |
+| `storageScaling.autoscaling.maxSize` | Maximum PVC size limit | `""` |
+
+#### Unsafe Flags
+
+| Parameter | Description | Default |
+|---|---|---|
+| `unsafeFlags.tls` | Allow cluster without TLS | `false` |
+| `unsafeFlags.replsetSize` | Allow unsafe replica set sizes | `false` |
+| `unsafeFlags.mongosSize` | Allow < 3 config servers or < 2 mongos | `false` |
+| `unsafeFlags.terminationGracePeriod` | Allow no termination grace period | `false` |
+| `unsafeFlags.backupIfUnhealthy` | Allow backup on unhealthy cluster | `false` |
+
+#### TLS
+
+| Parameter | Description | Default |
+|---|---|---|
+| `tls.mode` | TLS mode (`allowTLS`, `preferTLS`, `requireTLS`, `disabled`) | `preferTLS` |
+| `tls.certValidityDuration` | External certificate validity duration | `2160h` |
+| `tls.allowInvalidCertificates` | Skip server certificate validation | `true` |
+| `tls.issuerConf.name` | cert-manager issuer name | `""` |
+| `tls.issuerConf.kind` | cert-manager issuer kind | `""` |
+| `tls.issuerConf.group` | cert-manager issuer group | `""` |
+
+#### Secrets
+
+| Parameter | Description | Default |
+|---|---|---|
+| `secrets.users` | Secret name for MongoDB system users | `mongodb-rs-secrets` |
+| `secrets.ssl` | Secret name for external TLS certificate | `mongodb-rs-ssl` |
+| `secrets.sslInternal` | Secret name for internal TLS certificate | `mongodb-rs-ssl-internal` |
+| `secrets.encryptionKey` | Secret for data-at-rest encryption key | `""` |
+| `secrets.vault` | Secret for HashiCorp Vault integration | `""` |
+
+#### Replica Set (rs0)
+
+| Parameter | Description | Default |
+|---|---|---|
+| `replsets.rs0.name` | Replica set name | `rs0` |
+| `replsets.rs0.size` | Number of replica set pods | `3` |
+| `replsets.rs0.resources` | Pod resource requests/limits | `{}` |
+| `replsets.rs0.volumeSpec.pvc.storageClassName` | PVC storage class | `rancher-dynamic-local-path` |
+| `replsets.rs0.volumeSpec.pvc.resources.requests.storage` | PVC storage size | `3Gi` |
+| `replsets.rs0.affinity.antiAffinityTopologyKey` | Pod anti-affinity key | `kubernetes.io/hostname` |
+| `replsets.rs0.podDisruptionBudget.maxUnavailable` | Max unavailable pods | `1` |
+| `replsets.rs0.expose.enabled` | Expose replica set outside cluster | `false` |
+| `replsets.rs0.expose.type` | Service type when exposed | `ClusterIP` |
+| `replsets.rs0.nonvoting.enabled` | Add non-voting pods | `false` |
+| `replsets.rs0.nonvoting.size` | Number of non-voting pods | `1` |
+
+#### Upgrade Options
+
+| Parameter | Description | Default |
+|---|---|---|
+| `upgradeOptions.versionServiceEndpoint` | Endpoint for PSMDB version service | `https://check.percona.com` |
+| `upgradeOptions.apply` | Image to apply (`disabled`, `recommended`, `latest`, or version) | `disabled` |
+| `upgradeOptions.schedule` | Cron schedule for updates | `"0 2 * * *"` |
+| `upgradeOptions.setFCV` | Set feature compatibility version on major upgrade | `false` |
+
+#### Multi-cluster
+
+| Parameter | Description | Default |
+|---|---|---|
+| `multiCluster.enabled` | Enable Multi Cluster Services (MCS) | `false` |
+| `multiCluster.DNSSuffix` | DNS suffix for multi-cluster services | `""` |
+
+#### PMM Monitoring
+
+| Parameter | Description | Default |
+|---|---|---|
+| `pmm.enabled` | Enable Percona Monitoring and Management | `false` |
+| `pmm.image.repository` | PMM client image repository | `pmm-client` |
+| `pmm.image.tag` | PMM client image tag | `3.6.0` |
+| `pmm.serverHost` | PMM server hostname | `monitoring-service` |
+
+#### Backup
+
+| Parameter | Description | Default |
+|---|---|---|
+| `backup.enabled` | Enable backups | `false` |
+| `backup.image.repository` | Backup image repository | `percona-backup-mongodb` |
+| `backup.image.tag` | Backup image tag | `2.12.0` |
+
+#### Log Collector
+
+| Parameter | Description | Default |
+|---|---|---|
+| `logcollector.enabled` | Enable Fluent Bit log collector sidecar | `false` |
+| `logcollector.image.repository` | Log collector image | `fluentbit` |
+| `logcollector.image.tag` | Log collector tag | `4.0.1-2` |
+
+---
+
+## Installation
+
+### Step 1 — Create namespaces
 
 ```bash
-# Navigate to database chart
-cd mongodb-rs
-
-# Follow the database deployment instructions
-# See: mongodb-rs/README.md
-```
-
-##  Individual Chart Documentation
-
-Each chart has its own comprehensive README with detailed installation and configuration instructions:
-
-- [MongoDB Operator Documentation](./mongodb-rs-operator/README.md)
-- [MongoDB Replica Set Documentation](./mongodb-rs/README.md)
-
-
-# Pre-requisite
-
-## 1.1 System Requirements
-
-- Kubernetes 1.32+
-- Helm v3
-- A StorageClass configured in your cluster
-- Access to your container registry
-- kubectl configured with cluster access
-
-## 1.2 Default Configuration
-
-The MongoDB cluster chart can be customized using the following configurable parameters. These are the default values from `values.yaml`:
-
-| Parameter                                                | Description                                                                                                                                                                                   | Default                               |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `crVersion`                                              | CR Cluster Manifest version                                                                                                                                                                   | `1.22.0`                              |
-| `pause`                                                  | Stop PSMDB Database safely                                                                                                                                                                    | `false`                               |
-| `unmanaged`                                              | Start cluster and don't manage it (cross cluster replication)                                                                                                                                 | `false`                               |
-| `enableVolumeExpansion`                                  | **Deprecated.** Use `storageScaling.enableVolumeScaling` instead. Allows to resize `PersistentVolumeClaim`s by changing `.volumeSpec.persistentVolumeClaim.resources` field               | `false`                               |
-| `enableExternalVolumeAutoscaling`                        | **Deprecated.** Use `storageScaling.enableExternalAutoscaling` instead. Suppress storage discrepancy error if external volume autoscaling is enabled                                      | `false`                               |
-| `unsafeFlags.tls`                                        | Allows users from configuring a cluster without TLS/SSL certificates                                                                                                                          | `false`                               |
-| `unsafeFlags.replsetSize`                                | Allows users from configuring a cluster with unsafe parameters: starting it with less than 3 replica set instances or with an even number of replica set instances without additional arbiter | `false`                               |
-| `unsafeFlags.mongosSize`                                 | Allows users from configuring a sharded cluster with less than 3 config server Pods or less than 2 mongos Pods                                                                                | `false`                               |
-| `unsafeFlags.terminationGracePeriod`                     | Allows users from configuring a sharded cluster without termination grace period for replica set                                                                                              | `false`                               |
-| `unsafeFlags.backupIfUnhealthy`                          | Allows running backup on a cluster with failed health checks                                                                                                                                  | `false`                               |
-| `clusterServiceDNSSuffix`                                | The (non-standard) cluster domain to be used as a suffix of the Service name                                                                                                                  | `""`                                  |
-| `clusterServiceDNSMode`                                  | Mode for the cluster service dns (Internal/ServiceMesh)                                                                                                                                       | `""`                                  |
-| `annotations`                                            | PSMDB custom resource annotations                                                                                                                                                             | `{}`                                  |
-| `ignoreAnnotations`                                      | The list of annotations to be ignored by the Operator                                                                                                                                         | `[]`                                  |
-| `ignoreLabels`                                           | The list of labels to be ignored by the Operator                                                                                                                                              | `[]`                                  |
-| `multiCluster.enabled`                                   | Enable Multi Cluster Services (MCS) cluster mode                                                                                                                                              | `false`                               |
-| `multiCluster.DNSSuffix`                                 | The cluster domain to be used as a suffix for multi-cluster Services used by Kubernetes                                                                                                       | `""`                                  |
-| `updateStrategy`                                         | Regulates the way how PSMDB Cluster Pods will be updated after setting a new image                                                                                                            | `SmartUpdate`                         |
-| `upgradeOptions.versionServiceEndpoint`                  | Endpoint for actual PSMDB Versions provider	                                                                                                                                               | `https://check.percona.com`           |
-| `upgradeOptions.apply`                                   | PSMDB image to apply from version service - recommended, latest, actual version like 4.4.2-4                                                                                                  | `disabled`                            |
-| `upgradeOptions.schedule`                                | Cron formatted time to execute the update                                                                                                                                                     | `"0 2 * * *"`                         |
-| `upgradeOptions.setFCV`                                  | Set feature compatibility version on major upgrade                                                                                                                                            | `false`                               |
-| `storageScaling.enableVolumeScaling`                 | Allows to resize `PersistentVolumeClaim`s by changing `.volumeSpec.persistentVolumeClaim.resources` field                                                                                     | `false`                               |
-| `storageScaling.enableExternalAutoscaling`           | Suppress storage discrepancy error if external volume autoscaling is enabled                                                                                                                  | `false`                               |
-| `storageScaling.autoscaling.enabled`                 | Enable automatic storage expansion for all replica sets                                                                                                                                       | `false`                               |
-| `storageScaling.autoscaling.triggerThresholdPercent` | Percentage of disk usage that triggers automatic storage expansion (50-95)                                                                                                                    | `80`                                  |
-| `storageScaling.autoscaling.growthStep`              | Amount to add to the storage when the threshold is exceeded (e.g., "2Gi")                                                                                                                     | `"2Gi"`                               |
-| `storageScaling.autoscaling.maxSize`                 | Maximum size for PVCs (e.g., "100Gi"). If set, autoscaling will not increase storage beyond this limit                                                                                        | `""`                                  |
-| `finalizers:percona.com/delete-psmdb-pvc`                | Set this if you want to delete database persistent volumes on cluster deletion                                                                                                                | `[]`                                  |
-| `finalizers:percona.com/delete-psmdb-pods-in-order`      | Set this if you want to delete PSMDB pods in order (primary last)                                                                                                                             | `[]`                                  |
-| `finalizers:percona.com/delete-pitr-chunks`              | Set this if you want to delete all pitr chunks on cluster deletion                                                                                                                            | `[]`                                  |
-| `image.repository`                                       | PSMDB Container image repository                                                                                                                                                              | `percona-server-mongodb`              |
-| `image.tag`                                              | PSMDB Container image tag                                                                                                                                                                     | `7.0.31`                              |
-| `imagePullPolicy`                                        | The policy used to update images                                                                                                                                                              | `IfNotPresent`                        |
-| `imagePullSecrets`                                       | PSMDB Container pull secret                                                                                                                                                                   | `[]`                                  |
-| `initImage.repository`                                   | Repository for custom init image                                                                                                                                                              | `percona-server-mongodb-operator`      |
-| `initImage.tag`                                          | Tag for custom init image                                                                                                                                                                     | `1.22.0`                              |
-| `initContainerSecurityContext`                           | A custom Kubernetes Security Context for a Container for the initImage                                                                                                                        | `{}`                                  |
-| |
-| `tls.mode`                     | Control usage of TLS (allowTLS, preferTLS, requireTLS, disabled)                | `preferTLS` |
-| `tls.certValidityDuration`     | The validity duration of the external certificate for cert manager              | `2160h`        |
-| `tls.allowInvalidCertificates` | If enabled the mongo shell will not attempt to validate the server certificates | `true`      |
-| `tls.issuerConf.name`          | A cert-manager issuer name                                                      | `""`        |
-| `tls.issuerConf.kind`          | A cert-manager issuer kind                                                      | `""`        |
-| `tls.issuerConf.group`         | A cert-manager issuer group                                                     | `""`        |
-| |
-| `vault.endpointURL`            | Vault address                                                                                      | `""` |
-| `vault.tlsSecret`              | Kubernetes secret containing Vault TLS certs                                                       | `""` |
-| `vault.syncUsers.role`         | Vault role name                                                                                    | `""` |
-| `vault.syncUsers.mountPath`    | Vault mount path (https://developer.hashicorp.com/vault/docs/secrets/kv)                           | `""` |
-| `vault.syncUsers.keyPath`      | Vault key path for password                                                                        | `""` |
-| `vault.syncUsers.tokenSecret`  | Secret containing `token` key for authentication (if not used, operator will use Kubernetes auth)  | `""` |
-| |
-| `secrets.users`         | The name of the Secrets object for the MongoDB users required to run the operator          | `mongodb-rs-secrets` |
-| `secrets.encryptionKey` | Set secret for data at rest encryption key                                                 | `""` |
-| `secrets.keyFile`       | Specifies a secret key file for authenticating MongoDB instances                           | `""` |
-| `secrets.vault`         | Specifies a secret object to provide integration with HashiCorp Vault                      | `""` |
-| `secrets.ldapSecret`    | Specifies a secret object for LDAP over TLS connection between MongoDB and OpenLDAP server | `""` |
-| `secrets.sse`           | The name of the Secrets object for server side encryption credentials                      | `""` |
-| `secrets.ssl`           | A secret with TLS certificate generated for external communications                        | `mongodb-rs-ssl` |
-| `secrets.sslInternal`   | A secret with TLS certificate generated for internal communications                        | `mongodb-rs-ssl-internal` |
-| |
-| `pmm.enabled`                  | Enable integration with [Percona Monitoring and Management software](https://www.percona.com/blog/2020/07/23/using-percona-kubernetes-operators-with-percona-monitoring-and-management/) | `false`              |
-| `pmm.image.repository`         | PMM Container image repository                                                                                                                                                           | `pmm-client` |
-| `pmm.image.tag`                | PMM Container image tag                                                                                                                                                                  | `3.6.0`              |
-| `pmm.serverHost`               | PMM server related K8S service hostname                                                                                                                                                  | `monitoring-service` |
-| `pmm.containerSecurityContext` | Set the security context for PMM container                                                                                                                                               | `{}`                 |
-| `pmm.resources`                | Set resources for PMM container                                                                                                                                                          | `{}`                 |
-| `pmm.mongodParams`             | PMM mongod params                                                                                                                                                                        | `""`                 |
-| `pmm.mongosParams`             | PMM mongos params                                                                                                                                                                        | `""`                 |
-| `pmm.customClusterName`        | PMM cluster name. If not set Operator uses cr.Name for PMM cluster name                                                                                                                  | `""`                 |
-| |
-| `replsets.rs0.name`                                                | ReplicaSet name                                                                                                                                                                                                                                              | `rs0`                    |
-| `replsets.rs0.size`                                                | ReplicaSet size (pod quantity)                                                                                                                                                                                                                               | `3`                      |
-| `replsets.rs0.terminationGracePeriodSeconds`                       | The amount of seconds Kubernetes will wait for a clean replica set Pods termination                                                                                                                                                                          | `""`                     |
-| `replsets.rs0.externalNodes.host`                                  | The URL or IP address of the external replset instance                                                                                                                                                                                                       | `""`                     |
-| `replsets.rs0.externalNodes.port`                                  | The port number of the external replset instance                                                                                                                                                                                                             | `""`                     |
-| `replsets.rs0.externalNodes.votes`                                 | The number of [votes](https://docs.mongodb.com/manual/reference/replica-configuration/#mongodb-rsconf-rsconf.members-n-.votes) of the external replset instance                                                                                              | `""`                     |
-| `replsets.rs0.externalNodes.priority`                              | The [priority](https://docs.mongodb.com/manual/reference/replica-configuration/#mongodb-rsconf-rsconf.members-n-.priority) of the external replset instance                                                                                                  | `""`                     |
-| `replsets.rs0.configuration`                                       | Custom config for mongod in replica set                                                                                                                                                                                                                      | `""`                     |
-| `replsets.rs0.hookScript.configMapRef.name`                        | Custom configmap name with hookscript for mongod in replica set                                                                                                                                                                                              | `""`                     |
-| `replsets.rs0.hookScript.script`                                   | Custom hookscript for mongod in replica set                                                                                                                                                                                                                  | `""`                     |
-| `replsets.rs0.topologySpreadConstraints`                           | Control how Pods are spread across your cluster among failure-domains such as regions, zones, nodes, and other user-defined topology domains                                                                                                                 | `{}`                     |
-| `replsets.rs0.replsetOverrides`                                    | Use if you need tooverride the replica set members FQDNs with custom hostnames. Each key under `replsetOverrides` should be name of a Pod. The Operator won't perform any validation for hostnames, so it's the user's responsibility to ensure connectivity | `{}`                     |
-| `replsets.rs0.serviceAccountName`                                  | Run replicaset Containers under specified K8S SA                                                                                                                                                                                                             | `""`                     |
-| `replsets.rs0.affinity.antiAffinityTopologyKey`                    | ReplicaSet Pod affinity                                                                                                                                                                                                                                      | `kubernetes.io/hostname` |
-| `replsets.rs0.affinity.advanced`                                   | ReplicaSet Pod advanced affinity                                                                                                                                                                                                                             | `{}`                     |
-| `replsets.rs0.tolerations`                                         | ReplicaSet Pod tolerations                                                                                                                                                                                                                                   | `[]`                     |
-| `replsets.rs0.priorityClass`                                       | ReplicaSet Pod priorityClassName                                                                                                                                                                                                                             | `""`                     |
-| `replsets.rs0.annotations`                                         | ReplicaSet Pod annotations                                                                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.labels`                                              | ReplicaSet Pod labels                                                                                                                                                                                                                                        | `{}`                     |
-| `replsets.rs0.nodeSelector`                                        | ReplicaSet Pod nodeSelector labels                                                                                                                                                                                                                           | `{}`                     |
-| `replsets.rs0.livenessProbe`                                       | ReplicaSet Pod livenessProbe structure                                                                                                                                                                                                                       | `{}`                     |
-| `replsets.rs0.readinessProbe`                                      | ReplicaSet Pod readinessProbe structure                                                                                                                                                                                                                      | `{}`                     |
-| `replsets.rs0.storage`                                             | Set cacheSizeRatio or other custom MongoDB storage options                                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.podSecurityContext`                                  | Set the security context for a Pod                                                                                                                                                                                                                           | `{}`                     |
-| `replsets.rs0.containerSecurityContext`                            | Set the security context for a Container                                                                                                                                                                                                                     | `{}`                     |
-| `replsets.rs0.runtimeClass`                                        | ReplicaSet Pod runtimeClassName                                                                                                                                                                                                                              | `""`                     |
-| `replsets.rs0.sidecars`                                            | ReplicaSet Pod sidecars                                                                                                                                                                                                                                      | `{}`                     |
-| `replsets.rs0.sidecarVolumes`                                      | ReplicaSet Pod sidecar volumes                                                                                                                                                                                                                               | `[]`                     |
-| `replsets.rs0.sidecarVolumes.nfs.server`                           | The hostname of the NFS server that will provide remote filesystem to the custom sidecar container volume for Replica Set Pods.                                                                                                                              | `""`                     |
-| `replsets.rs0.sidecarVolumes.nfs.path`                             | The path on the NFS server that will be provided as a remote filesystem to the custom sidecar container volume for Replica Set Pods.                                                                                                                         | `""`                     |
-| `replsets.rs0.sidecarPVCs`                                         | ReplicaSet Pod sidecar PVCs                                                                                                                                                                                                                                  | `[]`                     |
-| `replsets.rs0.podDisruptionBudget.maxUnavailable`                  | ReplicaSet failed Pods maximum quantity                                                                                                                                                                                                                      | `1`                      |
-| `replsets.rs0.splitHorizons`                                       | External URI for Split-horizon for replica set Pods of the exposed cluster                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.expose.enabled`                                      | Allow access to replicaSet from outside of Kubernetes                                                                                                                                                                                                        | `false`                  |
-| `replsets.rs0.expose.type`                                         | Network service access point type                                                                                                                                                                                                                            | `ClusterIP`              |
-| `replsets.rs0.expose.loadBalancerClass`                            | Class of the load balancer implementation the Service belongs to                                                                                                                                                                                             | `""`                     |
-| `replsets.rs0.expose.loadBalancerIP`                               | Set client IP to Load Balancer                                                                                                                                                                                                                               | `""`                     |
-| `replsets.rs0.expose.loadBalancerSourceRanges`                     | Limit client IP's access to Load Balancer                                                                                                                                                                                                                    | `{}`                     |
-| `replsets.rs0.expose.annotations`                                  | ReplicaSet service annotations                                                                                                                                                                                                                               | `{}`                     |
-| `replsets.rs0.expose.labels`                                       | ReplicaSet service labels                                                                                                                                                                                                                                    | `{}`                     |
-| `replsets.rs0.expose.internalTrafficPolicy`                        | ReplicaSet service internal traffic policy                                                                                                                                                                                                                   | `Local`                  |
-| `replsets.rs0.expose.externalTrafficPolicy`                        | ReplicaSet service external traffic policy                                                                                                                                                                                                                   | `Local`                  |
-| `replsets.rs0.schedulerName`                                       | ReplicaSet Pod schedulerName                                                                                                                                                                                                                                 | `""`                     |
-| `replsets.rs0.resources`                                           | ReplicaSet Pods resource requests and limits                                                                                                                                                                                                                 | `{}`                     |
-| `replsets.rs0.volumeSpec`                                          | ReplicaSet Pods storage resources                                                                                                                                                                                                                            | `{}`                     |
-| `replsets.rs0.volumeSpec.emptyDir`                                 | ReplicaSet Pods emptyDir K8S storage                                                                                                                                                                                                                         | `{}`                     |
-| `replsets.rs0.volumeSpec.hostPath`                                 | ReplicaSet Pods hostPath K8S storage                                                                                                                                                                                                                         |                          |
-| `replsets.rs0.volumeSpec.hostPath.path`                            | ReplicaSet Pods hostPath K8S storage path                                                                                                                                                                                                                    | `""`                     |
-| `replsets.rs0.volumeSpec.hostPath.type`                            | Type for hostPath volume                                                                                                                                                                                                                                     | `Directory`              |
-| `replsets.rs0.volumeSpec.pvc`                                      | ReplicaSet Pods PVC request parameters                                                                                                                                                                                                                       |                          |
-| `replsets.rs0.volumeSpec.pvc.annotations`                          | The Kubernetes annotations metadata for Persistent Volume Claim                                                                                                                                                                                              | `{}`                     |
-| `replsets.rs0.volumeSpec.pvc.labels`                               | The Kubernetes labels metadata for Persistent Volume Claim                                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.volumeSpec.pvc.storageClassName`                     | ReplicaSet Pods PVC target storageClass                                                                                                                                                                                                                      | `rancher-dynamic-local-path`                     |
-| `replsets.rs0.volumeSpec.pvc.accessModes`                          | ReplicaSet Pods PVC access policy                                                                                                                                                                                                                            | `[]`                     |
-| `replsets.rs0.volumeSpec.pvc.resources.requests.storage`           | ReplicaSet Pods PVC storage size                                                                                                                                                                                                                             | `3Gi`                    |
-| `replsets.rs0.hostAliases`                                         | The IP address for Kubernetes host aliases                                                                                                                                                                                                                   | `[]`                     |
-| `replsets.rs0.nonvoting.enabled`                                   | Add MongoDB nonvoting Pods                                                                                                                                                                                                                                   | `false`                  |
-| `replsets.rs0.nonvoting.podSecurityContext`                        | Set the security context for a Pod                                                                                                                                                                                                                           | `{}`                     |
-| `replsets.rs0.nonvoting.containerSecurityContext`                  | Set the security context for a Container                                                                                                                                                                                                                     | `{}`                     |
-| `replsets.rs0.nonvoting.size`                                      | Number of nonvoting Pods                                                                                                                                                                                                                                     | `1`                      |
-| `replsets.rs0.nonvoting.configuration`                             | Custom config for mongod nonvoting member                                                                                                                                                                                                                    | `""`                     |
-| `replsets.rs0.nonvoting.hookScript.configMapRef.name`              | Custom configmap name with hookscript for mongod nonvoting member                                                                                                                                                                                            | `""`                     |
-| `replsets.rs0.nonvoting.hookScript.script`                         | Custom hookscript for mongod nonvoting member                                                                                                                                                                                                                | `""`                     |
-| `replsets.rs0.nonvoting.serviceAccountName`                        | Run replicaset nonvoting Container under specified K8S SA                                                                                                                                                                                                    | `""`                     |
-| `replsets.rs0.nonvoting.affinity.antiAffinityTopologyKey`          | Nonvoting Pods affinity                                                                                                                                                                                                                                      | `kubernetes.io/hostname` |
-| `replsets.rs0.nonvoting.affinity.advanced`                         | Nonvoting Pods advanced affinity                                                                                                                                                                                                                             | `{}`                     |
-| `replsets.rs0.nonvoting.tolerations`                               | Nonvoting Pod tolerations                                                                                                                                                                                                                                    | `[]`                     |
-| `replsets.rs0.nonvoting.priorityClass`                             | Nonvoting Pod priorityClassName                                                                                                                                                                                                                              | `""`                     |
-| `replsets.rs0.primaryPreferTagSelector.region`                     | Makes MongoDB instance to be selected as Primary based on specified region                                                                                                                                                                                   | `""`                     |
-| `replsets.rs0.primaryPreferTagSelector.zone`                       | Makes MongoDB instance to be selected as Primary based on specified zone                                                                                                                                                                                     | `""`                     |
-| `replsets.rs0.nonvoting.annotations`                               | Nonvoting Pod annotations                                                                                                                                                                                                                                    | `{}`                     |
-| `replsets.rs0.nonvoting.labels`                                    | Nonvoting Pod labels                                                                                                                                                                                                                                         | `{}`                     |
-| `replsets.rs0.nonvoting.nodeSelector`                              | Nonvoting Pod nodeSelector labels                                                                                                                                                                                                                            | `{}`                     |
-| `replsets.rs0.nonvoting.podDisruptionBudget.maxUnavailable`        | Nonvoting failed Pods maximum quantity                                                                                                                                                                                                                       | `1`                      |
-| `replsets.rs0.nonvoting.resources`                                 | Nonvoting Pods resource requests and limits                                                                                                                                                                                                                  | `{}`                     |
-| `replsets.rs0.nonvoting.volumeSpec`                                | Nonvoting Pods storage resources                                                                                                                                                                                                                             | `{}`                     |
-| `replsets.rs0.nonvoting.volumeSpec.emptyDir`                       | Nonvoting Pods emptyDir K8S storage                                                                                                                                                                                                                          | `{}`                     |
-| `replsets.rs0.nonvoting.volumeSpec.hostPath`                       | Nonvoting Pods hostPath K8S storage                                                                                                                                                                                                                          |                          |
-| `replsets.rs0.nonvoting.volumeSpec.hostPath.path`                  | Nonvoting Pods hostPath K8S storage path                                                                                                                                                                                                                     | `""`                     |
-| `replsets.rs0.nonvoting.volumeSpec.hostPath.type`                  | Type for hostPath volume                                                                                                                                                                                                                                     | `Directory`              |
-| `replsets.rs0.nonvoting.volumeSpec.pvc`                            | Nonvoting Pods PVC request parameters                                                                                                                                                                                                                        |                          |
-| `replsets.rs0.nonvoting.volumeSpec.pvc.annotations`                | The Kubernetes annotations metadata for Persistent Volume Claim                                                                                                                                                                                              | `{}`                     |
-| `replsets.rs0.nonvoting.volumeSpec.pvc.labels`                     | The Kubernetes labels metadata for Persistent Volume Claim                                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.nonvoting.volumeSpec.pvc.storageClassName`           | Nonvoting Pods PVC target storageClass                                                                                                                                                                                                                       | `rancher-dynamic-local-path`                       |
-| `replsets.rs0.nonvoting.volumeSpec.pvc.accessModes`                | Nonvoting Pods PVC access policy                                                                                                                                                                                                                             | `[]`                     |
-| `replsets.rs0.nonvoting.volumeSpec.pvc.resources.requests.storage` | Nonvoting Pods PVC storage size                                                                                                                                                                                                                              | `3Gi`                    |
-| `replsets.rs0.arbiter.enabled`                                     | Create MongoDB arbiter service                                                                                                                                                                                                                               | `false`                  |
-| `replsets.rs0.arbiter.size`                                        | MongoDB arbiter Pod quantity                                                                                                                                                                                                                                 | `1`                      |
-| `replsets.rs0.arbiter.serviceAccountName`                          | Run replicaset arbiter Container under specified K8S SA                                                                                                                                                                                                      | `""`                     |
-| `replsets.rs0.arbiter.affinity.antiAffinityTopologyKey`            | MongoDB arbiter Pod affinity                                                                                                                                                                                                                                 | `kubernetes.io/hostname` |
-| `replsets.rs0.arbiter.affinity.advanced`                           | MongoDB arbiter Pod advanced affinity                                                                                                                                                                                                                        | `{}`                     |
-| `replsets.rs0.arbiter.tolerations`                                 | MongoDB arbiter Pod tolerations                                                                                                                                                                                                                              | `[]`                     |
-| `replsets.rs0.arbiter.priorityClass`                               | MongoDB arbiter priorityClassName                                                                                                                                                                                                                            | `""`                     |
-| `replsets.rs0.arbiter.annotations`                                 | MongoDB arbiter Pod annotations                                                                                                                                                                                                                              | `{}`                     |
-| `replsets.rs0.arbiter.labels`                                      | MongoDB arbiter Pod labels                                                                                                                                                                                                                                   | `{}`                     |
-| `replsets.rs0.arbiter.nodeSelector`                                | MongoDB arbiter Pod nodeSelector labels                                                                                                                                                                                                                      | `{}`                     |
-| `replsets.rs0.arbiter.resources`                                   | MongoDB arbiter Pod resource requests and limits                                                                                                                                                                                                             | `{}`                     |
-| `replsets.rs0.arbiter.hookScript.configMapRef.name`                | Custom configmap name with hookscript for mongod arbiter                                                                                                                                                                                                     | `""`                     |
-| `replsets.rs0.arbiter.hookScript.script`                           | Custom hookscript for mongod arbiter                                                                                                                                                                                                                         | `""`                     |
-| `replsets.rs0.hidden.enabled`                                      | Enable or disable creation of Replica Set hidden instances within the cluster.                                                                                                                                                                               | `false`                  |
-| `replsets.rs0.hidden.size`                                         | The number of Replica Set hidden instances within the cluster.                                                                                                                                                                                               | `2`                      |
-| `replsets.rs0.hidden.hookScript.configMapRef.name`                 | Custom configmap name with hookscript for mongod hidden member                                                                                                                                                                                               | `""`                     |
-| `replsets.rs0.hidden.hookScript.script`                            | Custom hookscript for mongod hidden member                                                                                                                                                                                                                   | `""`                     |
-| `replsets.rs0.hidden.podSecurityContext`                           | A custom [Kubernetes Security Context for a Pod](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) to be used instead of the default one.                                                                                          | `{}`                     |
-| `replsets.rs0.hidden.containerSecurityContext`                     | A custom [Kubernetes Security Context for a Container](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/) to be used instead of the default one.                                                                                    | `{}`                     |
-| `replsets.rs0.hidden.affinity.antiAffinityTopologyKey`             | The [Kubernetes topologyKey](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#inter-pod-affinity-and-anti-affinity-beta-feature) node affinity constraint for the hidden nodes.                                                            | `kubernetes.io/hostname` |
-| `replsets.rs0.hidden.affinity.advanced`                            | In cases where the pods require complex tuning, the advanced option turns off the `topologykey` effect. This setting allows the standard Kubernetes affinity constraints of any complexity to be used.                                                       | `{}`                     |
-| `replsets.rs0.hidden.tolerations`                                  | MongoDB hidden Pod tolerations                                                                                                                                                                                                                               | `[]`                     |
-| `replsets.rs0.hidden.priorityClassName`                            | The [Kuberentes Pod priority class](https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass) for the hidden nodes                                                                                                           | `""`                     |
-| `replsets.rs0.hidden.annotations`                                  | The [Kubernetes annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) metadata for the hidden nodes.                                                                                                                  | `{}`                     |
-| `replsets.rs0.hidden.labels`                                       | The [Kubernetes affinity labels](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/) for the hidden nodes.                                                                                                                                   | `{}`                     |
-| `replsets.rs0.hidden.nodeSelector`                                 | The [Kubernetes nodeSelector](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector) affinity constraint for the hidden nodes                                                                                                      | `{}`                     |
-| `replsets.rs0.hidden.resources`                                    | MongoDB hidden Pod resource requests and limits                                                                                                                                                                                                              | `{}`                     |
-| `replsets.rs0.hidden.podDisruptionBudget.maxUnavailable`           | The [Kubernetes Pod distribution budget](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/) limit specifying the maximum value for unavailable Pods among hidden nodes                                                                         | `1`                      |
-| `replsets.rs0.hidden.podDisruptionBudget.minUnavailable`           | The [Kubernetes Pod distribution budget](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/) limit specifying the minimum value for unavailable Pods among hidden nodes                                                                         | `1`                      |
-| |
-| `sharding.enabled`                                            | Enable sharding setup                                                                                                                                                                                                    | `false`                   |
-| `sharding.balancer.enabled`                                   | Enable/disable balancer                                                                                                                                                                                                  | `false`                   |
-| `sharding.configrs.size`                                      | Config ReplicaSet size (pod quantity)                                                                                                                                                                                    | `3`                      |
-| `sharding.configrs.terminationGracePeriodSeconds`             | The amount of seconds Kubernetes will wait for a clean replica set Pods termination                                                                                                                                      | `""`                     |
-| `sharding.configrs.externalNodes.host`                        | The URL or IP address of the external config server instance                                                                                                                                                             | `""`                     |
-| `sharding.configrs.externalNodes.port`                        | The port number of the external config server instance                                                                                                                                                                   | `""`                     |
-| `sharding.configrs.externalNodes.votes`                       | The number of [votes :octicons-link-external-16:](https://docs.mongodb.com/manual/reference/replica-configuration/#mongodb-rsconf-rsconf.members-n-.votes) of the [external config server instance](replication-main.md) | `""`                     |
-| `sharding.configrs.externalNodes.priority`                    | The [priority :octicons-link-external-16:](https://docs.mongodb.com/manual/reference/replica-configuration/#mongodb-rsconf-rsconf.members-n-.priority) of the [external config server instance](replication-main.md)     | `""`                     |
-| `sharding.configrs.configuration`                             | Custom config for mongod in config replica set                                                                                                                                                                           | `""`                     |
-| `sharding.configrs.hookScript.configMapRef.name`              | Custom configmap name with hookscript for mongod in config replica set                                                                                                                                                   | `""`                     |
-| `sharding.configrs.hookScript.script`                         | Custom hookscript for mongod in config replica set                                                                                                                                                                       | `""`                     |
-| `sharding.configrs.topologySpreadConstraints`                 | Control how Pods are spread across your cluster among failure-domains such as regions, zones, nodes, and other user-defined topology domains                                                                             | `{}`                     |
-| `sharding.configrs.serviceAccountName`                        | Run sharding configrs Containers under specified K8S SA                                                                                                                                                                  | `""`                     |
-| `sharding.configrs.affinity.antiAffinityTopologyKey`          | Config ReplicaSet Pod affinity                                                                                                                                                                                           | `kubernetes.io/hostname` |
-| `sharding.configrs.affinity.advanced`                         | Config ReplicaSet Pod advanced affinity                                                                                                                                                                                  | `{}`                     |
-| `sharding.configrs.tolerations`                               | Config ReplicaSet Pod tolerations                                                                                                                                                                                        | `[]`                     |
-| `sharding.configrs.priorityClass`                             | Config ReplicaSet Pod priorityClassName                                                                                                                                                                                  | `""`                     |
-| `sharding.configrs.annotations`                               | Config ReplicaSet Pod annotations                                                                                                                                                                                        | `{}`                     |
-| `sharding.configrs.labels`                                    | Config ReplicaSet Pod labels                                                                                                                                                                                             | `{}`                     |
-| `sharding.configrs.nodeSelector`                              | Config ReplicaSet Pod nodeSelector labels                                                                                                                                                                                | `{}`                     |
-| `sharding.configrs.livenessProbe`                             | Config ReplicaSet Pod livenessProbe structure                                                                                                                                                                            | `{}`                     |
-| `sharding.configrs.readinessProbe`                            | Config ReplicaSet Pod readinessProbe structure                                                                                                                                                                           | `{}`                     |
-| `sharding.configrs.storage`                                   | Set cacheSizeRatio or other custom MongoDB storage options                                                                                                                                                               | `{}`                     |
-| `sharding.configrs.podSecurityContext`                        | Set the security context for a Pod                                                                                                                                                                                       | `{}`                     |
-| `sharding.configrs.containerSecurityContext`                  | Set the security context for a Container                                                                                                                                                                                 | `{}`                     |
-| `sharding.configrs.runtimeClass`                              | Config ReplicaSet Pod runtimeClassName                                                                                                                                                                                   | `""`                     |
-| `sharding.configrs.sidecars`                                  | Config ReplicaSet Pod sidecars                                                                                                                                                                                           | `{}`                     |
-| `sharding.configrs.sidecarVolumes`                            | Config ReplicaSet Pod sidecar volumes                                                                                                                                                                                    | `[]`                     |
-| `sharding.configrs.sidecarVolumes.name`                       | Name of the custom sidecar container volume for Config Server Pods                                                                                                                                                       | `""`                     |
-| `sharding.configrs.sidecarVolumes.nfs.server`                 | The hostname of the NFS server that will provide remote filesystem to the custom sidecar container volume for Config Server Pods                                                                                         | `""`                     |
-| `sharding.configrs.sidecarVolumesnfs.path`                    | The path on the NFS server that will be provided as a remote filesystem to the custom sidecar container volume for Config Server Pods                                                                                    | `""`                     |
-| `sharding.configrs.sidecarPVCs`                               | Config ReplicaSet Pod sidecar PVCs                                                                                                                                                                                       | `[]`                     |
-| `sharding.configrs.podDisruptionBudget.maxUnavailable`        | Config ReplicaSet failed Pods maximum quantity                                                                                                                                                                           | `1`                      |
-| `sharding.configrs.expose.enabled`                            | Allow access to cfg replica from outside of Kubernetes                                                                                                                                                                   | `false`                  |
-| `sharding.configrs.expose.type`                               | Network service access point type                                                                                                                                                                                        | `ClusterIP`              |
-| `sharding.configrs.expose.loadBalancerClass`                  | Class of the load balancer implementation the Service belongs to                                                                                                                                                         | `""`                     |
-| `sharding.configrs.expose.loadBalancerIP`                     | Set client IP to Load Balancer                                                                                                                                                                                           | `""`                     |
-| `sharding.configrs.expose.loadBalancerSourceRanges`           | Limit client IP's access to Load Balancer                                                                                                                                                                                | `{}`                     |
-| `sharding.configrs.expose.annotations`                        | Config ReplicaSet service annotations                                                                                                                                                                                    | `{}`                     |
-| `sharding.configrs.expose.labels`                             | Config ReplicaSet service labels                                                                                                                                                                                         | `{}`                     |
-| `sharding.configrs.expose.internalTrafficPolicy`              | Config ReplicaSet service internal traffic policy                                                                                                                                                                        | `Local`                  |
-| `sharding.configrs.expose.externalTrafficPolicy`              | Config ReplicaSet service external traffic policy                                                                                                                                                                        | `Local`                  |
-| `sharding.configrs.resources.limits.cpu`                      | Config ReplicaSet resource limits CPU                                                                                                                                                                                    | `2000m`                   |
-| `sharding.configrs.resources.limits.memory`                   | Config ReplicaSet resource limits memory                                                                                                                                                                                 | `4Gi`                   |
-| `sharding.configrs.resources.requests.cpu`                    | Config ReplicaSet resource requests CPU                                                                                                                                                                                  | `1000m`                   |
-| `sharding.configrs.resources.requests.memory`                 | Config ReplicaSet resource requests memory                                                                                                                                                                               | `2Gi`                   |
-| `sharding.configrs.volumeSpec.hostPath`                       | Config ReplicaSet hostPath K8S storage                                                                                                                                                                                   |                          |
-| `sharding.configrs.volumeSpec.hostPath.path`                  | Config ReplicaSet hostPath K8S storage path                                                                                                                                                                              | `""`                     |
-| `sharding.configrs.volumeSpec.hostPath.type`                  | Type for hostPath volum                                                                                                                                                                                                  | `Directory`              |
-| `sharding.configrs.volumeSpec.emptyDir`                       | Config ReplicaSet Pods emptyDir K8S storage                                                                                                                                                                              |                          |
-| `sharding.configrs.volumeSpec.pvc`                            | Config ReplicaSet Pods PVC request parameters                                                                                                                                                                            |                          |
-| `sharding.configrs.volumeSpec.pvc.annotations`                | The Kubernetes annotations metadata for Persistent Volume Claim                                                                                                                                                          | `{}`                     |
-| `sharding.configrs.volumeSpec.pvc.labels`                     | The Kubernetes labels metadata for Persistent Volume Claim                                                                                                                                                               | `{}`                     |
-| `sharding.configrs.volumeSpec.pvc.storageClassName`           | Config ReplicaSet Pods PVC storageClass                                                                                                                                                                                  | `rancher-dynamic-local-path`                     |
-| `sharding.configrs.volumeSpec.pvc.accessModes`                | Config ReplicaSet Pods PVC access policy                                                                                                                                                                                 | `[]`                     |
-| `sharding.configrs.volumeSpec.pvc.resources.requests.storage` | Config ReplicaSet Pods PVC storage size                                                                                                                                                                                  | `3Gi`                    |
-| `sharding.configrs.hostAliases`                               | The IP address for Kubernetes host aliases                                                                                                                                                                               | `[]`                     |
-| `sharding.mongos.size`                                        | Mongos size (pod quantity)                                                                                                                                                                                               | `3`                      |
-| `sharding.mongos.terminationGracePeriodSeconds`               | The amount of seconds Kubernetes will wait for a clean mongos Pods termination                                                                                                                                           | `""`                     |
-| `sharding.mongos.configuration`                               | Custom config for mongos                                                                                                                                                                                                 | `""`                     |
-| `sharding.mongos.hookScript.configMapRef.name`                | Custom configmap name with hookscript for mongos                                                                                                                                                                         | `""`                     |
-| `sharding.mongos.hookScript.script`                           | Custom hookscript for mongos                                                                                                                                                                                             | `""`                     |
-| `sharding.mongos.topologySpreadConstraints`                   | Control how Pods are spread across your cluster among failure-domains such as regions, zones, nodes, and other user-defined topology domains                                                                             | `{}`                     |
-| `sharding.mongos.serviceAccountName`                          | Run sharding mongos Containers under specified K8S SA                                                                                                                                                                    | `""`                     |
-| `sharding.mongos.affinity.antiAffinityTopologyKey`            | Mongos Pods affinity                                                                                                                                                                                                     | `kubernetes.io/hostname` |
-| `sharding.mongos.affinity.advanced`                           | Mongos Pods advanced affinity                                                                                                                                                                                            | `{}`                     |
-| `sharding.mongos.tolerations`                                 | Mongos Pods tolerations                                                                                                                                                                                                  | `[]`                     |
-| `sharding.mongos.priorityClass`                               | Mongos Pods priorityClassName                                                                                                                                                                                            | `""`                     |
-| `sharding.mongos.annotations`                                 | Mongos Pods annotations                                                                                                                                                                                                  | `{}`                     |
-| `sharding.mongos.labels`                                      | Mongos Pods labels                                                                                                                                                                                                       | `{}`                     |
-| `sharding.mongos.nodeSelector`                                | Mongos Pods nodeSelector labels                                                                                                                                                                                          | `{}`                     |
-| `sharding.mongos.livenessProbe`                               | Mongos Pod livenessProbe structure                                                                                                                                                                                       | `{}`                     |
-| `sharding.mongos.readinessProbe`                              | Mongos Pod readinessProbe structure                                                                                                                                                                                      | `{}`                     |
-| `sharding.mongos.podSecurityContext`                          | Set the security context for a Pod                                                                                                                                                                                       | `{}`                     |
-| `sharding.mongos.containerSecurityContext`                    | Set the security context for a Container                                                                                                                                                                                 | `{}`                     |
-| `sharding.mongos.runtimeClass`                                | Mongos Pod runtimeClassName                                                                                                                                                                                              | `""`                     |
-| `sharding.mongos.sidecars`                                    | Mongos Pod sidecars                                                                                                                                                                                                      | `{}`                     |
-| `sharding.mongos.sidecarVolumes`                              | Mongos Pod sidecar volumes                                                                                                                                                                                               | `[]`                     |
-| `sharding.mongos.sidecarPVCs`                                 | Mongos Pod sidecar PVCs                                                                                                                                                                                                  | `[]`                     |
-| `sharding.mongos.podDisruptionBudget.maxUnavailable`          | Mongos failed Pods maximum quantity                                                                                                                                                                                      | `1`                      |
-| `sharding.mongos.resources.limits.cpu`                        | Mongos Pods resource limits CPU                                                                                                                                                                                          | `1000m`                   |
-| `sharding.mongos.resources.limits.memory`                     | Mongos Pods resource limits memory                                                                                                                                                                                       | `2Gi`                   |
-| `sharding.mongos.resources.requests.cpu`                      | Mongos Pods resource requests CPU                                                                                                                                                                                        | `500m`                   |
-| `sharding.mongos.resources.requests.memory`                   | Mongos Pods resource requests memory                                                                                                                                                                                     | `1Gi`                   |
-| `sharding.mongos.expose.type`                                 | Mongos service type                                                                                                                                                                                                      | `ClusterIP`              |
-| `sharding.mongos.expose.loadBalancerClass`                    | Class of the load balancer implementation the Service belongs to                                                                                                                                                         | `""`                     |
-| `sharding.mongos.expose.loadBalancerIP`                       | Set client IP to Load Balancer                                                                                                                                                                                           | `""`                     |
-| `sharding.mongos.expose.servicePerPod`                        | Create a separate ClusterIP Service for each mongos instance                                                                                                                                                             | `false`                  |
-| `sharding.mongos.expose.loadBalancerSourceRanges`             | Limit client IP's access to Load Balancer                                                                                                                                                                                | `{}`                     |
-| `sharding.mongos.expose.annotations`                          | Mongos service annotations                                                                                                                                                                                               | `{}`                     |
-| `sharding.mongos.expose.labels`                               | Mongos service labels                                                                                                                                                                                                    | `{}`                     |
-| `sharding.mongos.expose.internalTrafficPolicy`                | Mongos service internal traffic policy                                                                                                                                                                                   | `Local`                  |
-| `sharding.mongos.expose.externalTrafficPolicy`                | Mongos service external traffic policy                                                                                                                                                                                   | `Local`                  |
-| `sharding.mongos.expose.nodePort`                             | Custom port if exposing mongos via NodePort                                                                                                                                                                              | `""`                     |
-| `sharding.mongos.hostAliases`                                 | The IP address for Kubernetes host aliases                                                                                                                                                                               | `[]`                     |
-| |
-| `users.name`                   | The username of the MongoDB application user                                                                                                                                                                                                                                                                 | `""` |
-| `users.db`                     | Database that the user authenticates against                                                                                                                                                                                                                                                                 | `""` |
-| `users.passwordSecretRef.name` | Name of the secret that contains the user's password                                                                                                                                                                                                                                                         | `""` |
-| `users.passwordSecretRef.key`  | Key in the secret that corresponds to the value of the user's password                                                                                                                                                                                                                                       | `""` |
-| `users.roles.role.name`        | Name of the MongoDB role assigned to the user. As built-in roles, so custom roles are supported | `""` |
-| `users.roles.role.db`          | Database that the MongoDB role applies to                                                                                                                                                                                                                                                                    | `""` |
-| |
-| `roles.role`                                     | Name of the custom role.                                                                                                                                                                                                                                                                                                | `""`      |
-| `roles.db`                                       | Database in which you want to store the user-defined role.                                                                                                                                                                                                                                                              | `admin`   |
-| `roles.authenticationRestrictions.clientSource`  | Array of IP addresses or CIDR blocks from which users assigned this role can connect.MongoDB servers reject connection requests from users with this role if the requests come from a client that is not present in this array.                                                                                         | `""`      |
-| `roles.authenticationRestrictions.serverAddress` | Array of IP addresses or CIDR blocks to which users assigned this role can connect.MongoDB servers reject connection requests from users with this role if the client requests to connect to a server that is not present in this array.                                                                                | `""`      |
-| `roles.privileges.actions`                       | Name of the role. Valid values are built-in roles.                                                                                                                                                                                                                                                                      | `[]`      |
-| `roles.privileges.resource.db`                   | Database for which the privilege `security.roles.privileges.actions` apply. An empty string ("") indicates that the privilege actions apply to all databases.                                                                                                                                                           | `""`      |
-| `roles.privileges.resource.collection`           | Collection for which the privilege `security.roles.privileges.actions` apply. An empty string ("") indicates that the privilege actions apply to all of the database's collections.                                                                                                                                     | `""`      |
-| `roles.privileges.resource.cluster`              | Flag that indicates that the privilege `security.roles.privileges.actions` apply to all databases and collections in the MongoDB deployment. If omitted, defaults to false.If set to true, do not provide values for `security.roles.privileges.resource.database` and `security.roles.privileges.resource.collection`. | `""`      |
-| `roles.roles.role`                               | Name of the role to inherit from.                                                                                                                                                                                                                                                                                       | `""`      |
-| `roles.roles.db`                                 | Name of database that contains the role to inherit from.                                                                                                                                                                                                                                                                | `""`      |
-| |
-| `backup.enabled`                                   | Enable backup PBM agent                                                       | `false`                           |
-| `backup.startingDeadlineSeconds`                   | The maximum time in seconds for a backup to start                             | `300`                            |
-| `backup.annotations`                               | Backup job annotations                                                        | `{}`                             |
-| `backup.podSecurityContext`                        | Set the security context for a Pod                                            | `{}`                             |
-| `backup.containerSecurityContext`                  | Set the security context for a Container                                      | `{}`                             |
-| `backup.restartOnFailure`                          | Backup Pods restart policy                                                    | `true`                           |
-| `backup.image.repository`                          | PBM Container image repository                                                | `percona-backup-mongodb` |
-| `backup.image.tag`                                 | PBM Container image tag                                                       | `2.12.0`                         |
-| `backup.storages`                                  | Local/remote backup storages settings                                         | `{}`                             |
-| `backup.volumeMounts`                              | Name of the remote backup storage                                             | `""`                             |
-| `backup.pitr.enabled`                              | Enable point in time recovery for backup                                      | `false`                          |
-| `backup.pitr.oplogOnly`                            | Start collecting oplogs even if full logical backup doesn't exist             | `false`                          |
-| `backup.pitr.oplogSpanMin`                         | Number of minutes between the uploads of oplogs                               | `10`                             |
-| `backup.pitr.compressionType`                      | The point-in-time-recovery chunks compression format                          | `gzip`                          |
-| `backup.pitr.compressionLevel`                     | The point-in-time-recovery chunks compression level                           | `6`                             |
-| `backup.hookScript.configMapRef.name`              | Custom configmap name with hookscript for backup                              | `""`                             |
-| `backup.hookScript.script`                         | Custom hookscript for backup                                                  | `""`                             |
-| `backup.configuration.backupOptions`               | Custom configuration settings for backup                                      | `{}`                             |
-| `backup.configuration.restoreOptions`              | Custom configuration settings for restore                                     | `{}`                             |
-| `backup.tasks`                                     | Backup working schedule                                                       | `[]`                             |
-| `backup.tasks[].name`                              | Name of the backup schedule                                                   | `""`                             |
-| `backup.tasks[].enabled`                           | Enable scheduled backup task                                                  | `false`                          |
-| `backup.tasks[].schedule`                          | Backup execution timetable cron timing                                        | `false`                          |
-| `backup.tasks[].retention.count`                   | Backup jobs to keep                                                           | `0`                              |
-| `backup.tasks[].retention.type`                    | Backup retention type                                                         | `count`                          |
-| `backup.tasks[].retention.deleteFromStorage`       | Whether to add the "percona.com/delete-backup" finalizer to new backups       | `true`                           |
-| `backup.tasks[].storageName`                       | Backup storage name                                                           | `""`                             |
-| `backup.tasks[].compressionType`                   | Backup compression type                                                       | `gzip`                           |
-| `systemUsers`                                      | PSMDB operator system users                                                   | `{}`                             |
-| `logcollector.enabled`                             | Enable or disable the log collector sidecar container                         | `false`                           |
-| `logcollector.image.repository`                    | Container image repository for the log collector (Fluent Bit)                 | `fluentbit`              |
-| `logcollector.image.tag`                           | Image tag for the log collector                                               | `4.0.1-2`                        |
-| `logcollector.resources`                           | Resource requests and limits                                                  | `{}`                             |
-| `logcollector.configuration`                       | Custom configuration (optional, if not commented out)                         | `""`                             |
-
-Specify parameters using `--set key=value[,key=value]` argument to `helm install`
-Notice that you can use multiple replica sets only with sharding enabled.
-
-# Installation
-
-## 1.1 Create Namespaces
-
-```sh
 kubectl create ns mongodb-operator
 kubectl create ns database
 ```
 
-## 1.2 Verify StorageClass
+### Step 2 — Verify StorageClass
 
-```sh
+```bash
 kubectl get storageclass
 ```
 
-Ensure you have at least one StorageClass available. If not, deployment will fail.
+Ensure at least one StorageClass is available.
 
-## 1.3 Deploy PSMDB Operator
+### Step 3 — Deploy the PSMDB Operator
 
-Install the Percona Server for MongoDB Operator using Helm. CRDs are bundled in the chart's `crds/` folder and are applied automatically before the operator templates:
+CRDs are bundled in the chart's `crds/` folder and applied automatically:
 
-```sh
-
-helm upgrade --install mongodb-rs-operator ./mongodb-rs-operator -n mongodb-operator \
+```bash
+helm upgrade --install mongodb-rs-operator ./mongodb-rs-operator \
+  -n mongodb-operator \
   --set replicaCount=1 \
   --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.0/percona \
   --set image.repository=percona-server-mongodb-operator \
   --set image.tag=1.22.0 \
   --set watchNamespace=database
-
-
 ```
 
-## 1.4 Verify Operator Deployment
+### Step 4 — Verify the Operator
 
-Wait for the Operator pods to be ready:
-
-```sh
+```bash
 kubectl get pods -n mongodb-operator -l app=mongodb-rs
 ```
 
-Expected output: All pods should show `1/1 Running`
+Expected: all pods `1/1 Running`.
 
-## 1.5 Deploy PSMDB Cluster
+### Step 5 — Deploy the MongoDB Cluster
 
-Install the MongoDB cluster using the default `values.yaml`:
-
-```sh
-helm upgrade --install mongodb-rs -f ./mongodb-rs/values.yaml ./mongodb-rs -n database \
+```bash
+helm upgrade --install mongodb-rs \
+  -f ./mongodb-rs/values.yaml ./mongodb-rs \
+  -n database \
   --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.1/percona \
   --set image.repository=percona-server-mongodb \
   --set image.tag=7.0.31
 ```
 
-## 1.6 Verify Cluster Deployment
+### Step 6 — Verify the Cluster
 
-Wait for all cluster pods to be ready:
-
-```sh
+```bash
 kubectl get pods -n database -l app=mongodb-rs
 ```
 
-Expected output:
-- Config server pods: `3/3 Running`  (if sharding enabled)
-- Mongos pods: `1/1 Running` (if sharding enabled)
-- Replica set pods: `3/3 Running` 
+Expected: replica set pods `3/3 Running`.
 
-## 1.7 Access Credentials
+### Step 7 — Access credentials
 
-Retrieve the MongoDB credentials from the secret:
+```bash
+# User admin
+kubectl -n database get secrets mongodb-rs-secrets \
+  -o jsonpath="{.data.MONGODB_USER_ADMIN_USER}" | base64 --decode
+kubectl -n database get secrets mongodb-rs-secrets \
+  -o jsonpath="{.data.MONGODB_USER_ADMIN_PASSWORD}" | base64 --decode
 
-```sh
-# Get admin user
-kubectl -n database get secrets mongodb-rs-secrets -o jsonpath="{.data.MONGODB_USER_ADMIN_USER}" | base64 --decode
-
-# Get admin password
-kubectl -n database get secrets mongodb-rs-secrets -o jsonpath="{.data.MONGODB_USER_ADMIN_PASSWORD}" | base64 --decode
-
-# Get cluster admin user
-kubectl -n database get secrets mongodb-rs-secrets -o jsonpath="{.data.MONGODB_CLUSTER_ADMIN_USER}" | base64 --decode
-
-# Get cluster admin password
-kubectl -n database get secrets mongodb-rs-secrets -o jsonpath="{.data.MONGODB_CLUSTER_ADMIN_PASSWORD}" | base64 --decode
+# Cluster admin
+kubectl -n database get secrets mongodb-rs-secrets \
+  -o jsonpath="{.data.MONGODB_CLUSTER_ADMIN_USER}" | base64 --decode
+kubectl -n database get secrets mongodb-rs-secrets \
+  -o jsonpath="{.data.MONGODB_CLUSTER_ADMIN_PASSWORD}" | base64 --decode
 ```
 
-## 1.8 Connect to the Cluster
+### Step 8 — Connect to MongoDB
 
-Connect using the mongos service endpoint (replica set):
-
-```sh
-kubectl run -i --rm --tty percona-client --image=percona/percona-server-mongodb:8.0 --restart=Never \
+```bash
+kubectl run -i --rm --tty percona-client \
+  --image=percona/percona-server-mongodb:8.0 --restart=Never \
   -- mongosh "mongodb://${ADMIN_USER}:${ADMIN_PASSWORD}@mongodb-rs-rs0.database.svc.cluster.local/admin?replicaSet=rs0&ssl=false"
 ```
 
-Or connect directly to a replica set pod:
+Or connect directly to a pod:
 
-```sh
-kubectl exec -it mongodb-rs-rs0-0 -n database -c mongod -- mongosh -u clusterAdmin -p clusterAdmin123456
+```bash
+kubectl exec -it mongodb-rs-rs0-0 -n database -c mongod \
+  -- mongosh -u clusterAdmin -p clusterAdmin123456
 ```
 
-# Uninstallation
+**Service naming convention:** `<cluster-name>-rs0` → `mongodb-rs-rs0.database.svc.cluster.local:27017`
 
-Uninstall in order: cluster first, then operator. CRDs are **not** deleted by `helm delete` (Helm safety behaviour) and must be removed manually if a full cleanup is required.
+---
 
-## 2.1 Uninstall PSMDB Cluster
+## Uninstallation
 
-```sh
+> Uninstall cluster **first**, then the operator. CRDs are **not** deleted by `helm delete` and must be removed manually if a full cleanup is required.
+
+### 1 — Uninstall the cluster
+
+```bash
 helm delete mongodb-rs -n database
 ```
 
-Remove the finalizer and force-delete the CR if it gets stuck in `stopping`:
+If the CR gets stuck in `stopping`, remove the finalizer:
 
-```sh
+```bash
 kubectl patch perconaservermongodb mongodb-rs -n database \
   -p '{"metadata":{"finalizers":[]}}' --type=merge
 kubectl delete perconaservermongodb mongodb-rs -n database --force --grace-period=0
 ```
 
-Wait for all cluster pods to terminate
+### 2 — Delete PVCs and secrets
 
-## 2.2 Delete Cluster PVCs and Secrets
-
-```sh
+```bash
 kubectl delete pvc -l app=mongodb-rs -n database
 kubectl delete secrets -n database --ignore-not-found \
   $(kubectl get secrets -n database -o name | grep mongodb-rs | cut -d/ -f2)
 ```
 
-## 2.3 Uninstall PSMDB Operator
+### 3 — Uninstall the Operator
 
-```sh
+```bash
 helm delete mongodb-rs-operator -n mongodb-operator
 ```
 
-## 2.4 Delete CRDs (if full cleanup required)
+### 4 — Delete CRDs (full cleanup only)
 
-> **Note:** Helm does not delete CRDs on `helm delete`. Run this only when you want a complete removal.
-
-```sh
+```bash
 kubectl delete crd \
   perconaservermongodbs.psmdb.percona.com \
   perconaservermongodbbackups.psmdb.percona.com \
   perconaservermongodbrestores.psmdb.percona.com
 ```
 
-## 2.5 Verify Clean State
+### 5 — Verify clean state
 
-```sh
+```bash
 helm list -A | grep mongodb-rs
 kubectl get pods -n database
 kubectl get pods -n mongodb-operator
@@ -550,6 +307,4 @@ kubectl get crd | grep psmdb
 kubectl get pvc -n database
 ```
 
-Expected: no output for all commands above.
-
----
+Expected: no output for all commands.

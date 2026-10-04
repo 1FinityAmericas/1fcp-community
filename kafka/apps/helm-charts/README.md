@@ -1,94 +1,148 @@
-# Helm Chart for Kafka
+# Kafka Helm Chart
 
+Helm chart for deploying [Apache Kafka](https://kafka.apache.org/) `7.9.2` on Kubernetes as part of the **1Finity Cloud Platform (1FCP)**. Kafka is deployed as a StatefulSet and connects to a pre-existing ZooKeeper cluster.
 
-This [Helm](https://helm.sh/) chart installs [Kafka].
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Parameters](#parameters)
+- [Installation](#installation)
+- [Uninstallation](#uninstallation)
+
+---
 
 ## Prerequisites
 
-- Kubernetes cluster 1.23+
-- Helm 3.0.0+
-- [Persistent Volumes (PV)](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) provisioner support in the underlying infrastructure.
+| Requirement | Version / Note |
+|---|---|
+| Kubernetes | 1.23+ |
+| Helm | 3.0.0+ |
+| ZooKeeper | Running and accessible — see the [zookeeper](../../zookeeper) chart |
+| PV Provisioner | Required |
 
+---
 
-Configurable Parameters for Kafka Helm Chart
+## Parameters
 
-The following table lists the configurable parameters of the Kafka chart and their default values:
+### Replica Count
 
+| Parameter | Description | Default |
+|---|---|---|
+| `brokers` | Number of Kafka broker pods | `3` |
 
-| Parameter                                                           | Description                            | Default                              |
-| ------------------------------------------------------------------- | -------------------------------------- | ------------------------------------ |
-| **Replica Count**                                                   |                                        |                                      |
-| `brokers`                                                           | Number of Kafka broker pods            | `3`                                  |
-| **Global / Image**                                                  |                                        |                                      |
-| `global.imageRegistry`                                              | Global image registry for all images   | `artifactory.fnc.fujitsu.com/fcp/1.0`            |
-| `image`                                                             | Kafka broker image                     | `kafka`                              |
-| `imageTag`                                                          | Kafka broker image tag                 | `7.9.2`                              |
-| `imagePullPolicy`                                                   | Kafka broker image pull policy         | `IfNotPresent`                       |
-| `initBusyBoxContainer.image`                                        | Init container image                   | `busybox`                            |
-| `initBusyBoxContainer.imageTag`                                     | Init container image tag               | `1.33.1`                             |
-| `initBusyBoxContainer.imagePullPolicy`                              | Init container image pull policy       | `IfNotPresent`                       |
-| `prometheus.image`                                                  | Prometheus JMX exporter image          | `prometheus-jmx-exporter-kubernetes` |
-| `prometheus.imageTag`                                               | Prometheus JMX exporter image tag      | `0.3.1`                              |
-| `prometheus.imagePullPolicy`                                        | Prometheus image pull policy           | `IfNotPresent`                       |
-| **Pod Settings**                                                    |                                        |                                      |
-| `podManagementPolicy`                                               | StatefulSet pod management policy      | `OrderedReady`                       |
-| `updateStrategy`                                                    | Update strategy for StatefulSet        | `RollingUpdate`                      |
-| **Security Context**                                                |                                        |                                      |
-| `securityContext.runAsUser`                                         | Pod container user ID                  | `1000`                               |
-| `securityContext.runAsGroup`                                        | Pod container group ID                 | `1000`                               |
-| `securityGroup.fsGroup`                                             | Pod filesystem group ID                | `1000`                               |
-| **Kafka Settings / Overrides**                                      |                                        |                                      |
-| `configurationOverrides.default.replication.factor`                 | Default replication factor for topics  | `3`                                  |
-| `configurationOverrides.num.partitions`                             | Default number of partitions per topic | `8`                                  |
-| `configurationOverrides.offsets.topic.replication.factor`           | Replication factor for offset topic    | `3`                                  |
-| `configurationOverrides.message.max.bytes`                          | Max message size in bytes              | `10000000`                           |
-| `configurationOverrides.acks`                                       | Producer acks setting                  | `-1`                                 |
-| `configurationOverrides.max.request.size`                           | Max request size                       | `10000000`                           |
-| `configurationOverrides.max.block.ms`                               | Max block time                         | `5000`                               |
-| `configurationOverrides.max.in.flight.requests.per.connection`      | Max in-flight requests per connection  | `1`                                  |
-| `configurationOverrides.producer.purgatory.purge.interval.requests` | Purge interval for producer requests   | `10000`                              |
-| `configurationOverrides.replica.lag.time.max.ms`                    | Max replica lag time                   | `10000`                              |
-| `configurationOverrides.zookeeper.session.timeout.ms`               | Zookeeper session timeout              | `30000`                              |
-| `configurationOverrides.delete.topic.enable`                        | Allow topic deletion                   | `false`                              |
-| `configurationOverrides.log.roll.hours`                             | Log roll interval in hours             | `24`                                 |
-| `configurationOverrides.log.retention.hours`                        | Log retention in hours                 | `24`                                 |
-| `heapOptions`                                                       | JVM heap options for Kafka broker      | `-Xms1G -Xmx2G`                      |
-| `insync.replicas`                                                   | Number of in-sync replicas             | `1`                                  |
-| `retention.bytes`                                                   | Log retention size in bytes            | `536870912`                          |
-| `retention.ms`                                                      | Log retention in ms                    | `259200000`                          |
-| `roll.ms`                                                           | Log roll interval in ms                | `259200000`                          |
-| `segment.bytes`                                                     | Log segment size                       | `1073741824`                         |
-| **Zookeeper Connection**                                            |                                        |                                      |
-| `zookeeper.serviceName`                                             | Zookeeper service name                 | `zookeeper`                          |
-| `zookeeper.namespace`                                               | Namespace where Zookeeper runs         | `ndl`                                |
-| `zookeeper.port`                                                    | Zookeeper client port                  | `2181`                               |
-| `zookeeper.svc`                                                     | Zookeeper FQDN                         | `svc.cluster.local`                  |
-| **Node / Network Settings**                                         |                                        |                                      |
-| `nodeAffinity.enabled`                                              | Enable node affinity                   | `False`                              |
-| `nodeport.enabled`                                                  | Enable NodePort service                | `False`                              |
-| `nodeport.servicePort`                                              | NodePort service port                  | `9092`                               |
-| `nodeport.firstListenerPort`                                        | First listener port                    | `31090`                              |
-| **Prometheus / JMX**                                                |                                        |                                      |
-| `prometheus.enabled`                                                | Enable Prometheus exporter             | `False`                              |
-| `jmx.port`                                                          | Broker JMX port                        | `5555`                               |
-| `prometheus.port`                                                   | Prometheus port                        | `5556`                               |
+### Image
 
+| Parameter | Description | Default |
+|---|---|---|
+| `global.imageRegistry` | Global image registry | `artifactory.fnc.fujitsu.com/fcp/1.0` |
+| `image` | Kafka broker image name | `kafka` |
+| `imageTag` | Kafka broker image tag | `7.9.2` |
+| `imagePullPolicy` | Image pull policy | `IfNotPresent` |
+| `initBusyBoxContainer.image` | Init container image | `busybox` |
+| `initBusyBoxContainer.imageTag` | Init container image tag | `1.33.1` |
+| `initBusyBoxContainer.imagePullPolicy` | Init container pull policy | `IfNotPresent` |
+| `prometheus.image` | Prometheus JMX exporter image | `prometheus-jmx-exporter-kubernetes` |
+| `prometheus.imageTag` | Prometheus JMX exporter tag | `0.3.1` |
+| `prometheus.imagePullPolicy` | Prometheus pull policy | `IfNotPresent` |
 
+### Pod Settings
 
+| Parameter | Description | Default |
+|---|---|---|
+| `podManagementPolicy` | StatefulSet pod management policy | `OrderedReady` |
+| `updateStrategy` | StatefulSet update strategy | `RollingUpdate` |
 
-## Installation & Uninstallation Steps of Kafka application
+### Security Context
 
-### Kafka  Installation
-Note:
-1. Make sure to edit the parameters as per requirement; the current values are defaults from the `values.yaml`.
-2. Update `<namespace_name>` in the Helm command; if the namespace does not exist, create it (ex: `kubectl create ns <namespace_name>`).
+| Parameter | Description | Default |
+|---|---|---|
+| `securityContext.runAsUser` | Container user ID | `1000` |
+| `securityContext.runAsGroup` | Container group ID | `1000` |
+| `securityGroup.fsGroup` | Filesystem group ID | `1000` |
+
+### Resources
+
+| Parameter | Description | Default |
+|---|---|---|
+| `resources.requests.cpu` | CPU request | `300m` |
+| `resources.requests.memory` | Memory request | `1.5Gi` |
+| `resources.limits.cpu` | CPU limit | `500m` |
+| `resources.limits.memory` | Memory limit | `2Gi` |
+
+### Kafka Configuration Overrides
+
+| Parameter | Description | Default |
+|---|---|---|
+| `configurationOverrides.default.replication.factor` | Default topic replication factor | `3` |
+| `configurationOverrides.num.partitions` | Default partitions per topic | `8` |
+| `configurationOverrides.offsets.topic.replication.factor` | Offset topic replication factor | `3` |
+| `configurationOverrides.message.max.bytes` | Max message size (bytes) | `10000000` |
+| `configurationOverrides.acks` | Producer acks setting | `-1` |
+| `configurationOverrides.max.request.size` | Max request size (bytes) | `10000000` |
+| `configurationOverrides.max.block.ms` | Max block time (ms) | `5000` |
+| `configurationOverrides.max.in.flight.requests.per.connection` | Max in-flight requests | `1` |
+| `configurationOverrides.producer.purgatory.purge.interval.requests` | Purge interval | `10000` |
+| `configurationOverrides.replica.lag.time.max.ms` | Max replica lag time (ms) | `10000` |
+| `configurationOverrides.zookeeper.session.timeout.ms` | ZooKeeper session timeout (ms) | `30000` |
+| `configurationOverrides.delete.topic.enable` | Allow topic deletion | `false` |
+| `configurationOverrides.log.roll.hours` | Log roll interval (hours) | `24` |
+| `configurationOverrides.log.retention.hours` | Log retention (hours) | `24` |
+| `heapOptions` | JVM heap options | `-Xms1G -Xmx2G` |
+| `insync.replicas` | Number of in-sync replicas | `1` |
+| `retention.bytes` | Log retention size (bytes) | `536870912` |
+| `retention.ms` | Log retention (ms) | `259200000` |
+| `roll.ms` | Log roll interval (ms) | `259200000` |
+| `segment.bytes` | Log segment size (bytes) | `1073741824` |
+
+### ZooKeeper Connection
+
+| Parameter | Description | Default |
+|---|---|---|
+| `zookeeper.serviceName` | ZooKeeper service name | `zookeeper` |
+| `zookeeper.namespace` | Namespace where ZooKeeper runs | `ndl` |
+| `zookeeper.port` | ZooKeeper client port | `2181` |
+| `zookeeper.svc` | ZooKeeper cluster domain suffix | `svc.cluster.local` |
+
+### Persistence
+
+| Parameter | Description | Default |
+|---|---|---|
+| `persistence.enabled` | Enable PVC | `true` |
+| `persistence.size` | PVC size | `5Gi` |
+| `persistence.storageClass` | Storage class | `rancher-dynamic-local-path` |
+
+### Network / Node
+
+| Parameter | Description | Default |
+|---|---|---|
+| `nodeAffinity.enabled` | Enable node affinity | `false` |
+| `nodeport.enabled` | Enable NodePort service | `false` |
+| `nodeport.servicePort` | NodePort service port | `9092` |
+| `nodeport.firstListenerPort` | First listener port | `31090` |
+
+### Prometheus / JMX
+
+| Parameter | Description | Default |
+|---|---|---|
+| `prometheus.enabled` | Enable Prometheus exporter | `false` |
+| `jmx.port` | Broker JMX port | `5555` |
+| `prometheus.port` | Prometheus scrape port | `5556` |
+
+---
+
+## Installation
+
+> Update `<namespace_name>` below. Create the namespace first if it does not exist:
+> ```bash
+> kubectl create ns <namespace_name>
+> ```
 
 ```bash
-
-helm upgrade --install kafka --namespace <namespace_name> --create-namespace \
+helm upgrade --install kafka \
+  --namespace <namespace_name> --create-namespace \
   -f values.yaml ./ \
   --set global.imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.0 \
-  --set global.ns=ndl \
+  --set global.ns=<namespace_name> \
   --set brokers=3 \
   --set image=kafka \
   --set imageTag=7.9.2 \
@@ -139,20 +193,20 @@ helm upgrade --install kafka --namespace <namespace_name> --create-namespace \
   --set jmx.port=5555 \
   --set prometheus.port=5556 \
   --set zookeeper.serviceName=zookeeper \
-  --set zookeeper.namespace=ndl \
+  --set zookeeper.namespace=<namespace_name> \
   --set zookeeper.port=2181 \
   --set zookeeper.svc=svc.cluster.local
+```
 
+---
 
+## Uninstallation
 
+```bash
+helm uninstall kafka -n <namespace_name>
+```
 
-
-
-Uninstallation of Kafka using Helm command
-
-helm uninstall zookeeper -n <namespace_name>
-
-# Example:
-helm uninstall Kafka -n Kafka
-
-
+> **Example:**
+> ```bash
+> helm uninstall kafka -n kafka
+> ```

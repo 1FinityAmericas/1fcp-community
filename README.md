@@ -1,6 +1,6 @@
 # 1FCP Community
 
-A collection of Ansible-based Kubernetes deployment packages for the **1FCP (Fujitsu Cloud Platform)** community. Each sub-project provides Helm chart templates, Ansible playbooks, and configuration files to deploy and manage a specific application on an RKE2 Kubernetes cluster.
+A collection of Ansible-based Kubernetes deployment packages for the **1Finity Cloud Platform (1FCP)** community. Each sub-project provides Helm chart templates, Ansible playbooks, and configuration files to deploy and manage a specific application on an RKE2 Kubernetes cluster.
 
 ## Projects
 
