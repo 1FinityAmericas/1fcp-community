@@ -190,16 +190,16 @@ To enable a local Docker registry, set in `dep_hosts`:
 ext_docker_registry=true
 ```
 
-The deployed registry uses the default DNS `fnc.fujitsu.reg`.
+The deployed registry uses the default DNS `<your-registry-dns>`.
 
 To configure an external proxy registry, set `proxy: true` in `roles/app_config/host_vars/app_config.yaml`:
 
 ```yaml
 docker_registry:
   proxy: true
-  proxy_reg: https://nexus.fnc.fujitsu.com:4000
-  proxy_username: nexusread
-  proxy_password: R3adonly
+  proxy_reg: https://<your-upstream-registry>
+  proxy_username: <username>
+  proxy_password: <password>
 ```
 
 **Install local registry:**
@@ -229,8 +229,8 @@ For multi-master HA deployments, set the following in `dep_hosts`:
 ```ini
 ha_rke2=true
 ha_rke2_interface=ens192
-ha_rke2_vip_address=167.254.227.59
-ha_rke2_vip_hostname=master.167.254.227.59.nip.io
+ha_rke2_vip_address=<vip-address>
+ha_rke2_vip_hostname=master.<vip-address>.nip.io
 # stack_type: 'single' (IPv4 only) or 'dual' (IPv4 + IPv6)
 ```
 

@@ -41,7 +41,7 @@ Replace `<masterip>` with the actual master IP or kubeVIP address.
 **External Docker Registry DNS:**
 
 ```ini
-ext_doc_reg_dns='fnc.fujitsu.reg'
+ext_doc_reg_dns='<your-registry-dns>'
 ```
 
 **Kubernetes provider:**

@@ -26,7 +26,7 @@ Review and edit `roles/app_config/host_vars/app_config.yaml` before deploying:
 docker_registry:
   namespace: registry
   image:
-    repository: fnc.fujitsu.reg
+    repository: <your-registry-dns>
     name: registry
     tag: 3.0.0
   registry:
