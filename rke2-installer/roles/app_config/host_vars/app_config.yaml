@@ -33,4 +33,4 @@ custom_cert:
 #The client ID of the azure managed identity
 azure_vip_fix:
   enable: false
-  azure_client_id: b0a3dfb1-9849-4bc6-8b66-224e9e1812ca
+  azure_client_id: "azure_client_id"

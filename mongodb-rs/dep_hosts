@@ -4,8 +4,8 @@
 # ensure to have a sudo enabled user configured in all nodes
 [localhost:vars]
 ansible_connection=local
-ansible_user=virtuora
-ansible_group=virtuora
+ansible_user=1fcp
+ansible_group=1fcp
 ansible_password='fnc123'
 ansible_sudo_pass='fnc123'
 
@@ -26,8 +26,8 @@ ansible_ssh_private_key_file=./keyfile.pem
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ansible_connection=ssh
 ansible_ssh_timeout=120
-ansible_user=virtuora
-ansible_group=virtuora
+ansible_user=1fcp
+ansible_group=1fcp
 ansible_password='fnc123'
 ansible_sudo_pass='fnc123'
 stack_type='single'

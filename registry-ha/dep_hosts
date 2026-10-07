@@ -4,8 +4,8 @@
 # ensure to have a sudo enabled user configured in all nodes
 [localhost:vars]
 ansible_connection=local
-ansible_user=username
-ansible_group=username
+ansible_user=fnc123
+ansible_group=fnc123
 ansible_password='password'
 ansible_sudo_pass='password'
 
@@ -23,8 +23,8 @@ worker3 ip=10.156.183.99   host=worker3  group='node-config-compute'  ip6=2001:a
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ansible_connection=ssh
 ansible_ssh_timeout=120
-ansible_user=username
-ansible_group=username
+ansible_user=fnc123
+ansible_group=fnc123
 ansible_password='password'
 ansible_sudo_pass='password'
 stack_type='single'
@@ -35,7 +35,7 @@ ext_docker_registry=true
 ext_doc_reg_dns='fnc.fujitsu.reg'
 
 # change it to true if HA RKE2 is required with a VIP address
-ha_rke2=true
+ha_rke2=false
 # update this field with the respective network interface
 ha_rke2_interface=ens3
 # update  this field with a VIP address that is not assigned to any of the VMs in the network

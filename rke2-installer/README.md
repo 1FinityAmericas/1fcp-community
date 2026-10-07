@@ -24,7 +24,7 @@ Ansible-based installer for an RKE2 Kubernetes cluster on RHEL 8.10. Supports si
 |----------|-------------|
 | RAM      | 8 GB        |
 | CPU      | 8 vCPUs     |
-| Disk (`/var/lib/docker`) | 100 GB (master) |
+| Disk     | 100 GB      |
 
 ### Install prerequisites on nodes
 

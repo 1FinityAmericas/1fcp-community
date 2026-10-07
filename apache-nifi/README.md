@@ -121,7 +121,7 @@ apache_nifi:
 
   # Ingress Controller: 'nginx' or 'traefik'
   ingress_controller:
-    name: traefik
+    name: nginx
     localCert: true   # Set to false to use a shared gateway
 
   # Gateway API (when ingress_controller.name is 'traefik')
