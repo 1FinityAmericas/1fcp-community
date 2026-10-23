@@ -13,10 +13,7 @@
       run_once: true
 
 - import_playbook: app_config.yaml
-  tags: [never, push-images, deploy-nifi, cleanup-nifi]
-
-- import_playbook: push_images.yaml
-  tags: [never, push-images, deploy-nifi]
+  tags: [never, deploy-nifi, cleanup-nifi]
 
 - import_playbook: nifi_cleanup.yaml
   tags: [never, cleanup-nifi]

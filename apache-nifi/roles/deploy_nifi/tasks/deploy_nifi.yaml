@@ -20,7 +20,7 @@
   when: deployed_controller.stdout | trim | length == 0
 
 - name: Check if configured ingress controller exists
-  shell: kubectl get ingressclass {{ apache_nifi.ingress_controller.name }}
+  shell: kubectl get ingressclass nginx
   register: controller_check
   failed_when: false
   changed_when: false
@@ -32,27 +32,6 @@
       Available IngressClass: {{ deployed_controller.stdout | trim }}.
       Please update ingress_controller in app_config.yaml.
   when: controller_check.rc != 0
-
-# ==============================================================================
-# Shared Gateway Validation (for Traefik)
-# ==============================================================================
-- name: Check if Shared Gateway exists for traefik
-  shell: kubectl get gateway {{ apache_nifi.shared_gateway.name }} -n {{ apache_nifi.shared_gateway.namespace }}
-  register: gateway_check
-  failed_when: false
-  changed_when: false
-  when: apache_nifi.ingress_controller.name == 'traefik'
-
-- name: Fail if Gateway does not exist for traefik controller
-  fail:
-    msg: >-
-      Gateway '{{ apache_nifi.shared_gateway.name }}' not found in namespace '{{ apache_nifi.shared_gateway.namespace }}'.
-      Please ensure the Gateway is deployed before installing apache-nifi with traefik controller.
-  when:
-    - apache_nifi.ingress_controller.name == 'traefik'
-    - gateway_check.rc != 0
-
-
 
 - name: Copy start.sh to apache-nifi helm charts location
   ansible.builtin.copy:
@@ -448,19 +427,10 @@
       --set jvm.xms="{{ apache_nifi.jvm.xms }}" \
       --set jvm.xmx="{{ apache_nifi.jvm.xmx }}" \
       --set jvm.extra="{{ apache_nifi.jvm.extra }}" \
-      --set ingressController.name={{ apache_nifi.ingress_controller.name }} \
       --set ingress.enabled={{ apache_nifi.ingress.enabled }} \
       --set ingress.ip="{{ ingress_host }}" \
-      {% if apache_nifi.ingress_controller.name == 'nginx' %}
       --set ingress.hosts[0].host="{{ ingress_host }}" \
       --set ingress.tls[0].hosts[0]="{{ ingress_host }}" \
-      {% endif %}
-      {% if apache_nifi.ingress_controller.name == 'traefik' %}
-      --set shared_gateway.name={{ apache_nifi.shared_gateway.name }} \
-      --set shared_gateway.namespace={{ apache_nifi.shared_gateway.namespace }} \
-      --set shared_gateway.hostname="{{ ingress_host }}" \
-      --set ingressController.localCert={{ apache_nifi.ingress_controller.localCert }} \
-      {% endif %}
       --set customConf.enabled={{ apache_nifi.customConf.enabled }} \
       --set customConf.storageSize={{ apache_nifi.customConf.storageSize }} \
       --set customConf.hostPath={{ apache_nifi.customConf.hostPath }} \
@@ -500,29 +470,6 @@
     - (nifi_pods.stdout | regex_findall('Running') | length) == apache_nifi.replicaCount | int
   retries: 60        # 10 minutes
   delay: 10
-
-
-# ==============================================================================
-# Local Gateway Validation (for Traefik)
-# ==============================================================================
-- name: Check if local gateway exists for traefik
-  shell: kubectl get gateway nifi-gateway -n {{ apache_nifi.namespace }}
-  register: local_gateway_check
-  failed_when: false
-  changed_when: false
-  when:
-    - apache_nifi.ingress_controller.name == 'traefik'
-    - apache_nifi.ingress_controller.localCert | bool
-
-- name: Fail if Local gateway does not exist for traefik controller
-  fail:
-    msg: >-
-      Gateway 'nifi-gateway' not found in namespace '{{ apache_nifi.namespace }}'.
-      Please ensure the Gateway is deployed along with apache-nifi.
-  when:
-    - apache_nifi.ingress_controller.name == 'traefik'
-    - apache_nifi.ingress_controller.localCert | bool
-    - local_gateway_check.rc != 0
 
 
 - debug:

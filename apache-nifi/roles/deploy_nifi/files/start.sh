@@ -1,8 +1,5 @@
 #!/bin/sh -e
 
-export JAVA_HOME=/opt/java/openjdk/21-jre
-export PATH=$JAVA_HOME/bin:$PATH
-
 scripts_dir='/opt/nifi/scripts'
 bootstrap_file="${NIFI_HOME}/conf/bootstrap.conf"
 

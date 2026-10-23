@@ -1,32 +1,23 @@
 # Apache NiFi
 
-Ansible-based deployment of Apache NiFi on Kubernetes (RKE2). Supports single-user authentication, TLS ingress, Gateway API (Traefik), HA clustering, and custom package injection via hostPath volumes.
+Ansible-based deployment of Apache NiFi on Kubernetes (RKE2). Supports single-user authentication, TLS ingress, HA clustering, and custom package injection via hostPath volumes.
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Configuration](#configuration)
 - [TLS Certificate Configuration](#tls-certificate-configuration)
-- [Gateway API (Traefik)](#gateway-api-traefik)
 - [Custom Packages (hostPath Volumes)](#custom-packages-hostpath-volumes)
 - [Deployment](#deployment)
 - [Cleanup](#cleanup)
-- [Push Images](#push-images)
 - [Debug Mode](#debug-mode)
 
 ---
 
 ## Prerequisites
 
-### 1. Download Image Tarballs
 
-Run the `get_dependencies.sh` script to pull the required image tarballs from the registry:
-
-```bash
-sh scripts/get_dependencies.sh 1.0
-```
-
-### 2. Configure `dep_hosts`
+### 1. Configure `dep_hosts`
 
 Edit the `dep_hosts` inventory file and set the following:
 
@@ -62,8 +53,8 @@ apache_nifi:
   app_name: apache_nifi
   path: apache-nifi
   image:
-    repository: nifi
-    tag: 2.9.0-debian13
+    repository: apache/nifi
+    tag: 2.9.0
     enabled: true
   replicaCount: 3
   namespace: nifi
@@ -119,15 +110,6 @@ apache_nifi:
       nodeConnectionTimeout: "30 sec"
       requestReplicationClaimTimeout: "5 min"
 
-  # Ingress Controller: 'nginx' or 'traefik'
-  ingress_controller:
-    name: nginx
-    localCert: true   # Set to false to use a shared gateway
-
-  # Gateway API (when ingress_controller.name is 'traefik')
-  shared_gateway:
-    name: traefik-gateway
-    namespace: kube-system
 ```
 
 **Cluster properties** (`properties.cluster`) are passed as environment variables to NiFi pods and written to `nifi.properties` at startup via `start.sh`.
@@ -190,31 +172,6 @@ Generate key and certificate:
 openssl genrsa -out tls.key 2048
 openssl req -x509 -new -nodes -key tls.key -sha256 -days 3650 \
   -out tls.crt -config openssl.cnf -extensions req_ext
-```
-
----
-
-## Gateway API (Traefik)
-
-To use Gateway API instead of Ingress:
-
-1. Ensure Traefik is running as the Gateway controller on the RKE2 cluster.
-2. The `ingress_host` in `dep_hosts` is reused as the Gateway listener hostname.
-3. Update `app_config.yaml`:
-
-```yaml
-apache_nifi:
-  ingress_controller:
-    name: traefik
-  shared_gateway:
-    name: traefik-gateway
-    namespace: kube-system
-```
-
-4. Verify HTTPRoute status after deployment:
-
-```bash
-kubectl get httproute -n nifi
 ```
 
 ---

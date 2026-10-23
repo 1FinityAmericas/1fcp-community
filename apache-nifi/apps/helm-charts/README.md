@@ -1,6 +1,6 @@
 # Apache NiFi Helm Chart
 
-Helm chart for deploying an Apache NiFi `2.9.0-debian13` multi-node cluster on Kubernetes as part of the **1Finity Cloud Platform (1FCP)**.
+Helm chart for deploying an Apache NiFi `2.9.0` multi-node cluster on Kubernetes as part of the **1Finity Cloud Platform (1FCP)**.
 
 ## Table of Contents
 
@@ -8,7 +8,6 @@ Helm chart for deploying an Apache NiFi `2.9.0-debian13` multi-node cluster on K
 - [Parameters](#parameters)
 - [Installation](#installation)
 - [Uninstallation](#uninstallation)
-- [Ingress Controller Selection](#ingress-controller-selection)
 - [Custom Volumes (hostPath)](#custom-volumes-hostpath)
 
 ---
@@ -19,7 +18,7 @@ Helm chart for deploying an Apache NiFi `2.9.0-debian13` multi-node cluster on K
 |---|---|
 | Kubernetes | 1.23+ |
 | Helm | 3.0.0+ |
-| Ingress Controller | NGINX or Traefik |
+| Ingress Controller | NGINX |
 | StorageClass | `rancher-dynamic-local-path` (default) |
 
 ---
@@ -34,11 +33,9 @@ Helm chart for deploying an Apache NiFi `2.9.0-debian13` multi-node cluster on K
 
 ### Image
 
-| Parameter | Description | Default |
-|---|---|---|
-| `image.registry` | Container image registry | `artifactory.fnc.fujitsu.com` |
-| `image.repository` | Image repository | `fcp/1.1/nifi` |
-| `image.tag` | Image tag | `2.9.0-debian13` |
+| Parameter | Description | Default | `docker.io` |
+| `image.repository` | Image repository | `apache/nifi` |
+| `image.tag` | Image tag | `2.9.0` |
 | `image.pullPolicy` | Pull policy | `IfNotPresent` |
 
 ### Security Context
@@ -71,28 +68,6 @@ Helm chart for deploying an Apache NiFi `2.9.0-debian13` multi-node cluster on K
 | `ingress.tls[0].secretName` | TLS secret name | `apache-nifi-secret` |
 | `ingress.hosts[0].host` | Ingress host | `apache-nifi.<IP>.nip.io` |
 | `ingress.hosts[0].paths[0].path` | Ingress path | `/nifi(.*)` |
-| `ingressController.name` | Ingress controller type (`nginx` or `traefik`) | `nginx` |
-| `ingressController.localCert` | Dedicated TLS cert for Traefik | `true` |
-
-### Traefik Gateway API
-
-| Parameter | Description | Default |
-|---|---|---|
-| `shared_gateway.name` | Shared gateway name | `traefik-gateway` |
-| `shared_gateway.namespace` | Gateway namespace | `kube-system` |
-| `shared_gateway.hostname` | Gateway hostname | `""` |
-| `shared_gateway.pathMatch.type` | Path match type | `RegularExpression` |
-| `shared_gateway.pathMatch.value` | Path match value | `^/nifi.*` |
-| `shared_gateway.serversTransport.insecureSkipVerify` | Skip backend TLS verification | `true` |
-| `shared_gateway.middleware.buffering.maxRequestBodyBytes` | Max request body size | `524288000` |
-| `shared_gateway.middleware.buffering.memRequestBodyBytes` | Memory request body size | `2097152` |
-| `shared_gateway.middleware.buffering.retryExpression` | Retry expression | `IsNetworkError() && Attempts() < 2` |
-| `shared_gateway.sticky.cookieName` | Sticky session cookie name | `NIFI_SESSION` |
-| `shared_gateway.sticky.secure` | Secure cookie flag | `true` |
-| `shared_gateway.sticky.httpOnly` | HTTP-only cookie flag | `true` |
-| `shared_gateway.sticky.sameSite` | Same-site cookie attribute | `none` |
-| `shared_gateway.timeouts.request` | Request timeout | `3600s` |
-| `shared_gateway.timeouts.backendRequest` | Backend request timeout | `3600s` |
 
 ### Resources & Replicas
 
@@ -270,18 +245,7 @@ kubectl delete rolebinding  -n <nifi-namespace> -l app.kubernetes.io/instance=ni
 kubectl delete serviceaccount -n <nifi-namespace> -l app.kubernetes.io/instance=nifi
 ```
 
-### 3. Delete Traefik resources (if using Traefik)
-
-```bash
-kubectl delete serverstransport -n <nifi-namespace> nifi-transport
-kubectl delete middleware        -n <nifi-namespace> nifi-buffering
-kubectl delete traefikservice   -n <nifi-namespace> nifi-sticky
-kubectl delete httproute        -n <nifi-namespace> nifi-https
-# Only if using dedicated gateway (localCert: true)
-kubectl delete gateway          -n <nifi-namespace> nifi-gateway
-```
-
-### 4. Remove custom hostPath directories (if enabled)
+### 3. Remove custom hostPath directories (if enabled)
 
 Run on all worker nodes:
 
@@ -289,39 +253,12 @@ Run on all worker nodes:
 sudo rm -rf /var/lib/docker/dynamic-local-path-mounts/nifi
 ```
 
-### 5. Verify clean state
+### 4. Verify clean state
 
 ```bash
 helm list -n <nifi-namespace>
 kubectl get all,pvc,secret,configmap,ingress -n <nifi-namespace>
 ```
-
----
-
-## Ingress Controller Selection
-
-### NGINX (default)
-
-Uses standard Kubernetes Ingress with NGINX annotations for session affinity, timeouts, and SSL.
-
-```yaml
-ingressController:
-  name: nginx
-```
-
-### Traefik
-
-Uses Gateway API (Gateway, HTTPRoute) and Traefik CRDs (ServersTransport, Middleware, TraefikService) for advanced routing.
-
-```yaml
-ingressController:
-  name: traefik
-  localCert: true   # true = dedicated Gateway; false = shared Gateway
-```
-
-**Dedicated Gateway** (`localCert: true`) — creates a Gateway with its own TLS certificate.
-
-**Shared Gateway** (`localCert: false`) — attaches to an existing Traefik gateway; set `shared_gateway.name` and `shared_gateway.namespace`.
 
 ---
 

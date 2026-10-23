@@ -4,8 +4,8 @@ apache_nifi:
   app_name: apache_nifi
   path: apache-nifi
   image:
-    repository: nifi
-    tag: 2.9.0-debian13
+    repository: apache/nifi
+    tag: 2.9.0
     enabled: true
   replicaCount: 3
   namespace: nifi
@@ -60,17 +60,6 @@ apache_nifi:
       nodeReadTimeout: "5 min"
       nodeConnectionTimeout: "30 sec"
       requestReplicationClaimTimeout: "5 min"
-
-  # Ingress Controller Configuration
-  # Options: 'nginx' or 'traefik'
-  ingress_controller:
-    name: nginx
-    localCert: true # Set false if want shared gateway
-
-  # Gateway API Configuration (used when ingress_controller.name is 'traefik')
-  shared_gateway:
-    name: traefik-gateway # Shared gateway name
-    namespace: kube-system # shared gateway namespace
 
 external_registry:
   username: automation

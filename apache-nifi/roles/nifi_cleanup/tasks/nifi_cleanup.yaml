@@ -21,28 +21,6 @@
   shell: kubectl delete configmap -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
   ignore_errors: true
 
-# ------------------------------------------------------------------------------
-# Gateway API / Traefik Resources Cleanup
-# ------------------------------------------------------------------------------
-- name: Delete Apache NiFi HTTPRoutes
-  shell: kubectl delete httproute -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
-  ignore_errors: true
-  when: apache_nifi.ingress_controller.name == 'traefik'
-
-- name: Delete Apache NiFi TraefikService
-  shell: kubectl delete traefikservice -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
-  ignore_errors: true
-  when: apache_nifi.ingress_controller.name == 'traefik'
-
-- name: Delete Apache NiFi Middleware
-  shell: kubectl delete middleware -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
-  ignore_errors: true
-  when: apache_nifi.ingress_controller.name == 'traefik'
-
-- name: Delete Apache NiFi ServersTransport
-  shell: kubectl delete serverstransport -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force
-  ignore_errors: true
-  when: apache_nifi.ingress_controller.name == 'traefik'
 
 - name: Delete Apache NiFi-related pods
   shell: kubectl delete pod -n {{ apache_nifi.namespace }} -l app.kubernetes.io/instance=nifi --grace-period=0 --force

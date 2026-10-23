@@ -1,8 +1,8 @@
 fullnameOverride: "nifi"
 image:
-  registry: artifactory.fnc.fujitsu.com
-  repository: fcp/1.1/nifi
-  tag: 2.9.0-debian13
+  registry: docker.io
+  repository: apache/nifi
+  tag: 2.9.0
   pullPolicy: IfNotPresent
 
 securityContext:
@@ -147,39 +147,3 @@ dpmScripts:
   enabled: false
   storageSize: "1Gi"
   hostPath: /var/lib/docker/dynamic-local-path-mounts/nifi/dpm-scripts
-
-# Ingress Controller Selection
-# Options: 'nginx' or 'traefik'
-ingressController:
-  name: nginx
-  localCert: true
-
-# Gateway API Configuration (used when ingressController.name is 'traefik')
-shared_gateway:
-  name: traefik-gateway
-  namespace: kube-system
-  httpSectionName: web
-  httpsSectionName: websecure
-  hostname: ""
-  # HTTPRoute path matching
-  pathMatch:
-    type: RegularExpression
-    value: "^/nifi.*"  
-  # Traefik-specific configurations for NiFi
-  serversTransport:
-    insecureSkipVerify: true
-  middleware:
-    buffering:
-      maxRequestBodyBytes: 524288000
-      memRequestBodyBytes: 2097152
-      retryExpression: "IsNetworkError() && Attempts() < 2"
-  # Sticky session configuration
-  sticky:
-    cookieName: NIFI_SESSION
-    secure: true
-    httpOnly: true
-    sameSite: none
-  # Timeout configuration
-  timeouts:
-    request: "3600s"
-    backendRequest: "3600s"
