@@ -58,7 +58,7 @@ upgradeOptions:
 #    growthStep: "2Gi"
 #    maxSize: "100Gi"
 
-imageRegistry: artifactory.fnc.fujitsu.com/fcp/1.1/percona
+imageRegistry: docker.io/percona
 imagePullPolicy: IfNotPresent
 
 image:
@@ -760,7 +760,7 @@ sharding:
 backup:
   enabled: false
   image:
-    repository: percona-backup-mongodb
+    repository: percona/percona-backup-mongodb
     tag: 2.12.0
   # startingDeadlineSeconds: 300
   # annotations:

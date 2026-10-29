@@ -1,6 +1,0 @@
-@Library('pipeline-library@1fcp') _
-import static org.pipeline.Configuration.*
-import static org.pipeline.JenkinsPipeline.*
-projectName = pipeline_templates.get_project_name()
-repoName = pipeline_templates.get_repo_name()
-pipelineDataDriven(projectName,repoName)

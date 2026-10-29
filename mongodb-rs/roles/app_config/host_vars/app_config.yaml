@@ -8,7 +8,7 @@ mongodb_rs:
     namespace: mongodb-operator
     replicaCount: 1
     image:
-      repository: percona-server-mongodb-operator
+      repository: percona/percona-server-mongodb-operator
       tag: 1.22.0
       enabled: true
     watchNamespaces: database
@@ -25,7 +25,7 @@ mongodb_rs:
       enabled: false
 
     image:
-      repository: percona-server-mongodb
+      repository: percona/percona-server-mongodb
       tag: 7.0.31
       enabled: true
 

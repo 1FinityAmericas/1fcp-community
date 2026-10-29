@@ -39,7 +39,7 @@ helm install cassandra -n <namespace> . -f values.yaml
 
 | Name | Description | Default |
 |---|---|---|
-| `imageRegistry` | Docker image registry | `artifactory.fnc.fujitsu.com/fcp/1.0` |
+| `imageRegistry` | Docker image registry | `docker.io` |
 | `storageClass` | Global StorageClass for Persistent Volumes | `rancher-dynamic-local-path` |
 | `imagePullSecrets` | Registry pull secret names | `[{"name": "vnc-docker-registry-key"}]` |
 
@@ -55,7 +55,7 @@ helm install cassandra -n <namespace> . -f values.yaml
 | Name | Description | Default |
 |---|---|---|
 | `image.repository` | Cassandra image repository | `cassandra` |
-| `image.tag` | Image tag | `4.1.5-debian-12-r0-patched` |
+| `image.tag` | Image tag | `4.1.5` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `image.debug` | Enable debug mode | `false` |
 

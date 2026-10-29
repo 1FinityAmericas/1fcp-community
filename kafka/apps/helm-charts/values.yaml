@@ -12,8 +12,8 @@ brokers: 3
 ## Image Info
 ## ref: https://hub.docker.com/r/confluentinc/kafka/
 global:  
-  imageRegistry: artifactory.fnc.fujitsu.com/fcp/1.0
-image: kafka
+  imageRegistry: docker.io
+image: confluentinc/cp-kafka
 imageTag: 7.9.2
 
 ## Specify a imagePullPolicy

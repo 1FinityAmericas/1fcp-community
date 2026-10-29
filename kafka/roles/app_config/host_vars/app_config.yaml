@@ -1,13 +1,13 @@
 kafka:
   app_name: kafka
-  namespace: ndl
+  namespace: kafka
   cluster:
     #number of brokers
     replicaCount: 3
   busybox_init_container:
     image:
-      repository: busybox_fcp
-      tag: 1.0
+      repository: busybox
+      tag: 1.37.0
       pull_policy: IfNotPresent
       enabled: true
   prometheus_container:
@@ -18,7 +18,7 @@ kafka:
       enabled: false
   kafka_container:
     image:
-      repository: kafka
+      repository: confluentinc/cp-kafka
       tag: 7.9.2
       pull_policy: IfNotPresent
       enable: true
@@ -80,12 +80,7 @@ kafka:
     service_name: zookeeper
     name: zookeeper
     port: 2181
-    namespace: ndl
+    namespace: zookeeper
     svc: svc.cluster.local
     prometheus:
       enabled: false
-
-external_registry:
-  auth: false
-  username: automation
-  password: automation

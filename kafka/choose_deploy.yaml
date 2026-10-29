@@ -14,10 +14,7 @@
       run_once: true
 
 - import_playbook: app_config.yaml
-  tags: [never, push-images, deploy-kafka, cleanup-kafka]
-
-- import_playbook: push_images.yaml
-  tags: [never, push-images, deploy-kafka]
+  tags: [never, deploy-kafka, cleanup-kafka]
 
 - import_playbook: deploy_kafka.yaml
   tags: [never, deploy-kafka]

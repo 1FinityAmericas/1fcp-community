@@ -34,8 +34,8 @@ Helm chart for deploying [Apache Kafka](https://kafka.apache.org/) `7.9.2` on Ku
 
 | Parameter | Description | Default |
 |---|---|---|
-| `global.imageRegistry` | Global image registry | `artifactory.fnc.fujitsu.com/fcp/1.0` |
-| `image` | Kafka broker image name | `kafka` |
+| `global.imageRegistry` | Global image registry | `docker.io` |
+| `image` | Kafka broker image name | `confluentinc/cp-kafka` |
 | `imageTag` | Kafka broker image tag | `7.9.2` |
 | `imagePullPolicy` | Image pull policy | `IfNotPresent` |
 | `initBusyBoxContainer.image` | Init container image | `busybox` |
@@ -141,10 +141,10 @@ Helm chart for deploying [Apache Kafka](https://kafka.apache.org/) `7.9.2` on Ku
 helm upgrade --install kafka \
   --namespace <namespace_name> --create-namespace \
   -f values.yaml ./ \
-  --set global.imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.0 \
+  --set global.imageRegistry=docker.io \
   --set global.ns=<namespace_name> \
   --set brokers=3 \
-  --set image=kafka \
+  --set image=confluentinc/cp-kafka \
   --set imageTag=7.9.2 \
   --set imagePullPolicy=IfNotPresent \
   --set prometheus.image=prometheus-jmx-exporter-kubernetes \

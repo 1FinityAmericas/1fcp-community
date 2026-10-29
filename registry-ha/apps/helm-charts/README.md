@@ -29,7 +29,7 @@ Helm chart for deploying a High Availability Docker Registry on Kubernetes as pa
 ```
 ┌─────────────────────────────────────┐
 │         NGINX Ingress                │
-│   host: fnc.fujitsu.reg             │
+│   host: docker.reg             │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
@@ -140,7 +140,7 @@ Helm chart for deploying a High Availability Docker Registry on Kubernetes as pa
 | Parameter | Description | Default |
 |---|---|---|
 | `ingress.enabled` | Enable NGINX ingress for the registry | `true` |
-| `ingress.host` | Registry hostname | `fnc.fujitsu.reg` |
+| `ingress.host` | Registry hostname | `docker.reg` |
 | `ingress.annotations` | Ingress annotations | `nginx.ingress.kubernetes.io/proxy-body-size: "0"` |
 | `minioConsoleIngress.enabled` | Enable MinIO console ingress | `false` |
 | `minioConsoleIngress.host` | MinIO console hostname | `minio.<IP>.nip.io` |
@@ -200,10 +200,10 @@ Expected: all pods `Running`, PVCs `Bound`.
 ```bash
 # Pull and tag an image
 docker pull hello-world
-docker tag hello-world fnc.fujitsu.reg/hello-world
+docker tag hello-world docker.reg/hello-world
 
 # Push to the registry
-docker push fnc.fujitsu.reg/hello-world
+docker push docker.reg/hello-world
 ```
 
 ---

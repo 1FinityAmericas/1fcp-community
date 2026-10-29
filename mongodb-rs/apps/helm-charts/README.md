@@ -188,7 +188,7 @@ CRDs are bundled in the chart's `crds/` folder and applied automatically:
 helm upgrade --install mongodb-rs-operator ./mongodb-rs-operator \
   -n mongodb-operator \
   --set replicaCount=1 \
-  --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.0/percona \
+  --set imageRegistry=docker.io/percona \
   --set image.repository=percona-server-mongodb-operator \
   --set image.tag=1.22.0 \
   --set watchNamespace=database
@@ -208,7 +208,7 @@ Expected: all pods `1/1 Running`.
 helm upgrade --install mongodb-rs \
   -f ./mongodb-rs/values.yaml ./mongodb-rs \
   -n database \
-  --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.1/percona \
+  --set imageRegistry=docker.io/percona \
   --set image.repository=percona-server-mongodb \
   --set image.tag=7.0.31
 ```

@@ -6,16 +6,6 @@
       command: echo $HOME
       register: master_home
 
-    - name: Copy registry images (tars) to master(s) home path and rke2-images path for auto-load ctr images during node/ctr restarts
-      become: yes
-      copy:
-        src: "{{ playbook_dir }}/apps/images/{{ docker_registry.path }}/"
-        dest: "{{ item }}/"
-        mode: '0644'
-      loop:
-        - "{{ master_home.stdout }}"
-        - "/var/lib/rancher/rke2/agent/images/"
-
     - name: Set fact to prepare images 
       set_fact:
         ctr_cmd: "/var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io"      

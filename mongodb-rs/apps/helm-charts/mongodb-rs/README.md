@@ -37,7 +37,7 @@ The chart can be customized using the following configurable parameters. These a
 | `upgradeOptions.apply` | PSMDB image to apply from version service | `disabled` |
 | `upgradeOptions.schedule` | Cron time for update execution | `"0 2 * * *"` |
 | `upgradeOptions.setFCV` | Set feature compatibility version | `false` |
-| `imageRegistry` | Container registry for images | `artifactory.fnc.fujitsu.com/fcp/1.1/percona` |
+| `imageRegistry` | Container registry for images | `docker.io/percona` |
 | `imagePullPolicy` | Container image pull policy | `IfNotPresent` |
 | `image.repository` | PSMDB Container image repository | `percona-server-mongodb` |
 | `image.tag` | PSMDB Container image tag | `7.0.31` |
@@ -177,7 +177,7 @@ Expected output should show:
 ```bash
 helm upgrade --install mongodb-rs -f values.yaml . -n database \
   --set crVersion=1.22.0 \
-  --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.1/percona \
+  --set imageRegistry=docker.io/percona \
   --set multiCluster.enabled=false \
   --set image.repository=percona-server-mongodb \
   --set image.tag=7.0.31 \

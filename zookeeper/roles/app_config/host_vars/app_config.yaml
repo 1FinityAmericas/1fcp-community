@@ -1,12 +1,12 @@
 zookeeper:
   app_name: zookeeper
-  namespace: ndl
+  namespace: zookeeper
   cluster:
     replicaCount: 3
     quorum_size: 2
 
   image:
-    repository: zookeeper
+    repository: confluentinc/cp-zookeeper
     tag: 7.9.2
     enabled: true
     pullPolicy: IfNotPresent

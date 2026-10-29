@@ -5,7 +5,7 @@
 replicaCount: 1
 # revisionHistoryLimit: 10
 
-imageRegistry: artifactory.fnc.fujitsu.com/fcp/1.0/percona
+imageRegistry: docker.io/percona
 
 image:
   repository: percona-server-mongodb-operator

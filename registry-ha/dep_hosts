@@ -4,18 +4,21 @@
 # ensure to have a sudo enabled user configured in all nodes
 [localhost:vars]
 ansible_connection=local
-ansible_user=fnc123
-ansible_group=fnc123
+ansible_user=username
+ansible_group=username
 ansible_password='password'
 ansible_sudo_pass='password'
 
+# The number of master nodes can be either one or three.
+# Plays will be adjusted according to the number of master nodes
+# Update xx.xxx.xxx.xx as per the cluster node IP details
 [kubenodes]
-master1 ip=10.156.183.94   host=master1  group='node-config-master'   ip6=2001:abc:0:224:1c1d:c468:7f54:867f
-master2 ip=10.156.183.95   host=master2  group='node-config-master'  ip6=2001:abc:0:224::10
-master3 ip=10.156.183.96   host=master3  group='node-config-master'  ip6=2001:abc:0:224::11
-worker1 ip=10.156.183.97   host=worker1  group='node-config-compute'  ip6=2001:abc:0:224::12
-worker2 ip=10.156.183.98   host=worker2  group='node-config-compute'  ip6=2001:abc:0:224::13
-worker3 ip=10.156.183.99   host=worker3  group='node-config-compute'  ip6=2001:abc:0:224::13
+master1 ip=xx.xxx.xxx.xx   host=master1  group='node-config-master'   ip6=2001:abc:0:224:1c1d:c468:7f54:867f
+master2 ip=xx.xxx.xxx.xx   host=master2  group='node-config-master'  ip6=2001:abc:0:224::10
+master3 ip=xx.xxx.xxx.xx   host=master3  group='node-config-master'  ip6=2001:abc:0:224::11
+worker1 ip=xx.xxx.xxx.xx   host=worker1  group='node-config-compute'  ip6=2001:abc:0:224::12
+worker2 ip=xx.xxx.xxx.xx   host=worker2  group='node-config-compute'  ip6=2001:abc:0:224::13
+worker3 ip=xx.xxx.xxx.xx   host=worker3  group='node-config-compute'  ip6=2001:abc:0:224::13
 
 # ensure to have a sudo enabled  user configured in all nodes
 [kubenodes:vars]
@@ -23,8 +26,8 @@ worker3 ip=10.156.183.99   host=worker3  group='node-config-compute'  ip6=2001:a
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ansible_connection=ssh
 ansible_ssh_timeout=120
-ansible_user=fnc123
-ansible_group=fnc123
+ansible_user=username
+ansible_group=username
 ansible_password='password'
 ansible_sudo_pass='password'
 stack_type='single'
@@ -32,19 +35,19 @@ stack_type='single'
 #-------------------------Local Registry Settings--------------------------------
 # 'true' for deploying local registry
 ext_docker_registry=true
-ext_doc_reg_dns='fnc.fujitsu.reg'
+ext_doc_reg_dns='docker.reg'
 
 # change it to true if HA RKE2 is required with a VIP address
 ha_rke2=false
 # update this field with the respective network interface
 ha_rke2_interface=ens3
 # update  this field with a VIP address that is not assigned to any of the VMs in the network
-ha_rke2_vip_address=167.254.204.51
+ha_rke2_vip_address=<kube_vip_ip>
 # update the VIP address in the hostname
-ha_rke2_vip_hostname=master.167.254.204.51.nip.io
+ha_rke2_vip_hostname=master.<kube_vip_ip>.nip.io
 #-------------------------MVP Version------------------------------------------------
 #current release tag
-release_tag=fcp/1.0
+release_tag=fcp/1.1
 
 #-------------external_lb_setting---------------------------------------------
 #change this to true if you are using the external load balancer

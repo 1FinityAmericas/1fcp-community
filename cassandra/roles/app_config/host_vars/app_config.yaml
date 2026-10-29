@@ -1,6 +1,6 @@
 cassandra:
   app_name: cassandra      
-  namespace: ndl
+  namespace: cassandra
 
   #single or dual stack can be standalone or localha (which can be geod)
   #standalone and geod are mutually exclusive
@@ -22,19 +22,19 @@ cassandra:
   # fullnameOverride:
 
   image:
-    repository: cassandra
-    tag: 4.1.5-debian-12-r0-patched
+    repository: bitnamilegacy/cassandra
+    tag: 4.1.5-debian-12-r0
     enable: true
     pullPolicy: IfNotPresent
   init:
     image:
-      repository: busybox_fcp
-      tag: "1.0"
+      repository: busybox
+      tag: "1.37.0"
       enable: true
   # Configuration to set passwordseeder for cassandra statefulset
   enablePasswordSeeder: true
   cluster:
-    replicaCount: 1
+    replicaCount: 3
     datacenter: dc1
     rack: rack1
     seeds:
@@ -74,7 +74,3 @@ cassandra:
   nodeSelector:
     #isInfra_node: "yes"
 
-external_registry:
-  auth: false
-  username: automation
-  password: automation

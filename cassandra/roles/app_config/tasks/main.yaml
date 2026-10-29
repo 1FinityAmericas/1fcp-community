@@ -29,7 +29,7 @@
 
 - name: set registry path
   set_fact:
-    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+    registry: "{{ ext_doc_reg_dns }}"
 
 - name: determine cassandra name
   block:

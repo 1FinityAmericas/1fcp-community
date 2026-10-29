@@ -6,7 +6,7 @@ reg_ca_cert_exists: false
 docker_registry:
   namespace: registry
   image:
-    repository: fnc.fujitsu.reg
+    repository: docker.reg
     name: registry
     tag: 3.0.0
   registry:
@@ -33,7 +33,3 @@ docker_registry:
     limits:
       cpu: "2"
       memory: "4Gi"
-  proxy: false
-  proxy_reg: https://artifactory.fnc.fujitsu.com
-  proxy_username: automation
-  proxy_password: automation

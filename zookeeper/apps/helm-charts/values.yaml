@@ -16,9 +16,9 @@ minAvailable: 2
 ## ref: https://hub.docker.com/r/confluentinc/cp-zookeeper/
 
 image:
-  repository: zookeeper
+  repository: confluentic/cp-zookeeper
   tag: 7.9.2
-  registry: artifactory.fnc.fujitsu.com/fcp/1.0
+  registry: docker.io
   pullPolicy: IfNotPresent
 
 ## Specify an array of imagePullSecrets.

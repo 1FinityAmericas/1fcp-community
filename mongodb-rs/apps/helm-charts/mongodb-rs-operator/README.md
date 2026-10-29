@@ -18,7 +18,7 @@ The chart can be customized using the following configurable parameters. These a
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of operator pods to deploy | `1` |
-| `imageRegistry` | Container registry for images | `artifactory.fnc.fujitsu.com/fcp/1.0/percona` |
+| `imageRegistry` | Container registry for images | `docker.io/percona` |
 | `image.repository` | Operator container image name | `percona-server-mongodb-operator` |
 | `image.tag` | Operator container image tag | `1.22.0` |
 | `image.pullPolicy` | Container image pull policy | `IfNotPresent` |
@@ -84,7 +84,7 @@ kubectl create -f ./crds/perconaservermongodbrestores.yaml
 # Deploy operator
 helm upgrade --install mongodb-rs-operator . -n mongodb-operator \
   --set replicaCount=1 \
-  --set imageRegistry=artifactory.fnc.fujitsu.com/fcp/1.0/percona \
+  --set imageRegistry=docker.io/percona \
   --set image.repository=percona-server-mongodb-operator \
   --set image.tag=1.22.0 \
   --set watchNamespace=database \

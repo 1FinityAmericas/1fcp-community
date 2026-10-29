@@ -91,7 +91,7 @@ proxy_reg:
 # Ingress
 ingress:
   enabled: true
-  host: fnc.fujitsu.reg
+  host: docker.reg
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
 minioConsoleIngress:

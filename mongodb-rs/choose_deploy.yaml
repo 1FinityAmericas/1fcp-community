@@ -15,10 +15,7 @@
 
 
 - import_playbook: app_config.yaml
-  tags: [never, push-images, deploy-mongodb-rs, cleanup-mongodb-rs]
-
-- import_playbook: push_images.yaml
-  tags: [never, push-images, deploy-mongodb-rs]
+  tags: [never, deploy-mongodb-rs, cleanup-mongodb-rs]
 
 - import_playbook: cleanup_mongodb_rs.yaml
   tags: [never, cleanup-mongodb-rs]

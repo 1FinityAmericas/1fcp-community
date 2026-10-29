@@ -221,7 +221,7 @@ spec:
 
             {{- if .Values.proxy_reg.enabled }}
             - name: REGISTRY_PROXY_REMOTEURL
-              value: https://artifactory.fnc.fujitsu.com
+              value: ""
             - name: REGISTRY_PROXY_USERNAME
               value: jfrogread
             - name: REGISTRY_PROXY_PASSWORD

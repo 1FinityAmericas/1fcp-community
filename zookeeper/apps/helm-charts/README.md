@@ -33,8 +33,8 @@ Helm chart for deploying [Apache ZooKeeper](https://zookeeper.apache.org/) `7.9.
 
 | Parameter | Description | Default |
 |---|---|---|
-| `image.registry` | Image registry | `artifactory.fnc.fujitsu.com/fcp/1.0` |
-| `image.repository` | ZooKeeper image repository | `zookeeper` |
+| `image.registry` | Image registry | `docker.io` |
+| `image.repository` | ZooKeeper image repository | `confluentic/cp-zookeeper` |
 | `image.tag` | Image tag | `7.9.2` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
 
@@ -111,8 +111,8 @@ helm upgrade --install zookeeper \
   -f values.yaml ./ \
   --set servers=3 \
   --set minAvailable=2 \
-  --set image.registry=artifactory.fnc.fujitsu.com/fcp/1.0 \
-  --set image.repository=zookeeper \
+  --set image.registry=docker.io \
+  --set image.repository=confluentic/cp-zookeeper \
   --set image.tag=7.9.2 \
   --set image.pullPolicy=IfNotPresent \
   --set podManagementPolicy=OrderedReady \
