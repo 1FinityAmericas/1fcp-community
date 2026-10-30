@@ -214,16 +214,6 @@ time ansible-playbook -i dep_hosts choose_deploy.yaml -t cleanup-nifi -v
 
 ---
 
-## Push Images
-
-```bash
-touch logs/nifi_push_images.log
-export ANSIBLE_STDOUT_CALLBACK=debug
-export ANSIBLE_LOG_PATH=logs/nifi_push_images.log
-time ansible-playbook -i dep_hosts choose_deploy.yaml -t push-images -v
-```
-
----
 
 ## Debug Mode
 
