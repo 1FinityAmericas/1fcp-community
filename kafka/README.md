@@ -8,7 +8,6 @@ Ansible-based deployment of Apache Kafka on Kubernetes (RKE2) using Helm. Kafka 
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [Cleanup](#cleanup)
-- [Push Images](#push-images)
 
 ---
 
@@ -34,15 +33,6 @@ statefulset.apps/zookeeper    3/3     18m
 ```
 
 > See the [zookeeper](../zookeeper) sub-project to deploy ZooKeeper first.
-
-### 2. Download Image Tarballs
-
-```bash
-chmod +x scripts/get_dependencies.sh
-bash scripts/get_dependencies.sh <fcp-version>
-```
-
----
 
 ## Configuration
 
@@ -81,18 +71,6 @@ time ansible-playbook -i dep_hosts choose_deploy.yaml -t cleanup-kafka -v
 
 ---
 
-## Push Images
-
-Push images to the local registry at any time:
-
-```bash
-touch logs/ansible_kafka_push_images.log
-export ANSIBLE_STDOUT_CALLBACK=debug
-export ANSIBLE_LOG_PATH=logs/ansible_kafka_push_images.log
-time ansible-playbook -i dep_hosts choose_deploy.yaml -t push-images -v
-```
-
----
 
 ## License
 

@@ -9,7 +9,6 @@
           - Please execute the deployment script with one of the following options:
           -   -t deploy-mongodb-rs          : Deploy mongodb replicaset database
           -   -t cleanup-mongodb-rs         : Clean-up mongodb replicaset database
-          -   -t push-images                :  Manage images (identify, load, and push to registry)
       tags: help
       run_once: true
 

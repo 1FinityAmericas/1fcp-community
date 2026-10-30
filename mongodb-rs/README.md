@@ -4,26 +4,14 @@ Ansible-based deployment of a MongoDB Replica Set on Kubernetes (RKE2) using the
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
 - [TLS Certificate Configuration](#tls-certificate-configuration)
 - [Configuration](#configuration)
 - [Service Naming](#service-naming)
 - [Deployment](#deployment)
 - [Cleanup](#cleanup)
-- [Push Images](#push-images)
 
 ---
 
-## Prerequisites
-
-Download the required image tarballs before deploying:
-
-```bash
-chmod +x scripts/get_dependencies.sh
-./scripts/get_dependencies.sh <release_tag>
-```
-
----
 
 ## TLS Certificate Configuration
 
@@ -252,16 +240,6 @@ time ansible-playbook -i dep_hosts choose_deploy.yaml -t cleanup-mongodb-rs -v
 
 ---
 
-## Push Images
-
-```bash
-touch logs/mongodb_rs_push_images.log
-export ANSIBLE_STDOUT_CALLBACK=debug
-export ANSIBLE_LOG_PATH=logs/mongodb_rs_push_images.log
-time ansible-playbook -i dep_hosts choose_deploy.yaml -t push-images -v
-```
-
----
 
 ## License
 

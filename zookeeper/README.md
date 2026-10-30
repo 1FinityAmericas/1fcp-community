@@ -8,7 +8,6 @@ Ansible-based deployment of Apache ZooKeeper on Kubernetes (RKE2) using Helm. Zo
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [Cleanup](#cleanup)
-- [Push Images](#push-images)
 
 ---
 
@@ -23,17 +22,6 @@ vi dep_hosts
 ```
 
 Update the IP addresses and hostnames for your master and worker nodes, along with SSH credentials.
-
-### 2. Download Image Tarballs
-
-Pull the required image tarballs from the registry:
-
-```bash
-chmod +x scripts/get_dependencies.sh
-./scripts/get_dependencies.sh <fcp-version>
-```
-
-Images are placed in the `apps/images/` directory.
 
 ---
 
@@ -72,18 +60,6 @@ ansible-playbook -i dep_hosts choose_deploy.yaml -t cleanup-zookeeper -v
 
 ---
 
-## Push Images
-
-Push images to the local registry at any time:
-
-```bash
-touch logs/zookeeper_push_images.log
-export ANSIBLE_STDOUT_CALLBACK=debug
-export ANSIBLE_LOG_PATH=logs/zookeeper_push_images.log
-ansible-playbook -i dep_hosts choose_deploy.yaml -t push-images -v
-```
-
----
 
 ## License
 

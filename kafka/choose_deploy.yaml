@@ -9,7 +9,6 @@
           - Please execute the deployment script with one of the following options:
           -   -t deploy-kafka    :  Install kafka helm chart only
           -   -t cleanup-kafka    :  Uninstall kafka helm chart only and clean namespace
-          -   -t push-images     :  Manage HDFS images (identify, load, and push to registry)
         tags: help
       run_once: true
 

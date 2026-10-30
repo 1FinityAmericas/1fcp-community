@@ -39,7 +39,7 @@ Helm chart for deploying [Apache Kafka](https://kafka.apache.org/) `7.9.2` on Ku
 | `imageTag` | Kafka broker image tag | `7.9.2` |
 | `imagePullPolicy` | Image pull policy | `IfNotPresent` |
 | `initBusyBoxContainer.image` | Init container image | `busybox` |
-| `initBusyBoxContainer.imageTag` | Init container image tag | `1.33.1` |
+| `initBusyBoxContainer.imageTag` | Init container image tag | `1.37.0` |
 | `initBusyBoxContainer.imagePullPolicy` | Init container pull policy | `IfNotPresent` |
 | `prometheus.image` | Prometheus JMX exporter image | `prometheus-jmx-exporter-kubernetes` |
 | `prometheus.imageTag` | Prometheus JMX exporter tag | `0.3.1` |
@@ -151,7 +151,7 @@ helm upgrade --install kafka \
   --set prometheus.imageTag=0.3.1 \
   --set prometheus.imagePullPolicy=IfNotPresent \
   --set initBusyBoxContainer.image=busybox \
-  --set initBusyBoxContainer.imageTag=1.33.1 \
+  --set initBusyBoxContainer.imageTag=1.37.0 \
   --set initBusyBoxContainer.imagePullPolicy=IfNotPresent \
   --set resources.requests.cpu=300m \
   --set resources.requests.memory=1.5Gi \

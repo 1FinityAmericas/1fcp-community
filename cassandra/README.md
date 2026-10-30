@@ -4,26 +4,13 @@ Ansible-based deployment of Apache Cassandra on Kubernetes (RKE2) using Helm. Su
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [Cleanup](#cleanup)
-- [Push Images](#push-images)
 
 ---
 
-## Prerequisites
 
-Download the required image tarball from the registry before deploying:
-
-```bash
-chmod +x scripts/get_dependencies.sh
-bash scripts/get_dependencies.sh <fcp-version>
-```
-
-The script places the image tar into `apps/images/`.
-
----
 
 ## Configuration
 
@@ -62,18 +49,6 @@ time ansible-playbook -i dep_hosts choose_deploy.yaml -t cleanup-cassandra -v
 
 ---
 
-## Push Images
-
-Push images to the local registry at any time:
-
-```bash
-touch logs/push_images_cassandra.log
-export ANSIBLE_STDOUT_CALLBACK=debug
-export ANSIBLE_LOG_PATH=logs/push_images_cassandra.log
-time ansible-playbook -i dep_hosts choose_deploy.yaml -t push-images -v
-```
-
----
 
 ## License
 

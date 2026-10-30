@@ -125,13 +125,13 @@ nodeport:
   firstListenerPort: 31090
 
 initBusyBoxContainer:
-  image: busybox_fcp
-  imageTag: "1.0"
+  image: busybox
+  imageTag: "1.37.0"
   imagePullPolicy: IfNotPresent
 
 zookeeper:
   serviceName: zookeeper
-  namespace: ndl
+  namespace: zookeeper
   port: 2181
   svc: svc.cluster.local
 

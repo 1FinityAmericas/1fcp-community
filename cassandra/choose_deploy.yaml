@@ -7,7 +7,6 @@
     - debug:
         msg:
           - Please execute the deployment script with one of the following options:
-          -   -t push-images                : Manage rancher-local-provisioner images (identify, load, and push to registry) 
           -   -t deploy-cassandra     :  Deploy cassandra helm chart
           -   -t cleanup-cassandra    :  Uninstall cassandra helm chart and pvc
       tags: help
