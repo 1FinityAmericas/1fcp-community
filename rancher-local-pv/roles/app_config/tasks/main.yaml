@@ -1,0 +1,22 @@
+# file: roles/app_config/tasks/main.yml
+
+- name: Set ingress host ip
+  set_fact:
+    ingress_ip: "{{ hostvars[groups['primary_master_node_group'][0]].ip }}"
+
+
+- name: Load App Setup/configuration data
+  include_vars:
+    file: host_vars/app_config.yaml
+
+- name: Updated docker_repo to local fnc if any of the fnc-registry deployment is set true
+  set_fact:
+    docker_repo: "{{ ext_doc_reg_dns }}"
+
+- name: Get app name from app config
+  set_fact:
+    app_name: "{{ rancher_local_pv.app_name }}"   
+
+- name: set registry path
+  set_fact:
+    registry: "{{ ext_doc_reg_dns }}"    

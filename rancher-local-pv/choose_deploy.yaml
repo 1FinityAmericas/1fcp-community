@@ -1,0 +1,30 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - Please execute the deployment script with one of the following options:
+          -   -t deploy-rancher-local-pv     : Deploy storage of type rancher-local-provisioner
+          -   -t cleanup-rancher-local-pv    : Clean-up storage rancher-local-provisioner
+
+      tags: help
+      run_once: true
+
+
+- import_playbook: app_config.yaml
+  tags: [never, deploy-rancher-local-pv, cleanup-rancher-local-pv]
+
+- import_playbook: cleanup_rancher_local_pv.yaml
+  tags: [never, cleanup-rancher-local-pv]
+  #  when: "hostvars[groups['kubenodes'][0]].rancher_localpv|bool == true"
+
+- import_playbook: deploy_rancher_local_pv.yaml
+  tags: [never, deploy-rancher-local-pv]
+  #when: "hostvars[groups['kubenodes'][0]].rancher_localpv|bool == true"
+
+
+
+

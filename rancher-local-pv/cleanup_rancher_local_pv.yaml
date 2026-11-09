@@ -1,0 +1,5 @@
+---
+#
+- hosts: primary_master_node_group
+  roles:
+    - cleanup_rancher_local_pv

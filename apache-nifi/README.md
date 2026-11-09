@@ -16,8 +16,18 @@ Ansible-based deployment of Apache NiFi on Kubernetes (RKE2). Supports single-us
 
 ## Prerequisites
 
+### 1. Install prerequisites on nodes
 
-### 1. Configure `dep_hosts`
+Note: Skip the pre-requisite-installer.sh script if RKE2 was installed using 1fcp-community.
+
+```bash
+source scripts/pre-req-installer.sh master        # master node pre-requisites
+source scripts/pre-req-installer.sh worker        # worker node pre-requisites
+source scripts/pre-req-installer.sh master ntp    # master + NTP
+source scripts/pre-req-installer.sh worker ntp    # worker + NTP
+```
+
+### 2. Configure `dep_hosts`
 
 Edit the `dep_hosts` inventory file and set the following:
 
@@ -191,6 +201,8 @@ openssl req -x509 -new -nodes -key tls.key -sha256 -days 3650 \
 3. Set the corresponding `enabled: true` flags in `app_config.yaml` (`customConf`, `customLib`, `customExtensions`, `dpmScripts`).
 
 ---
+
+Note: Below Ansible commands must be run from one of the master nodes in the cluster.
 
 ## Deployment
 

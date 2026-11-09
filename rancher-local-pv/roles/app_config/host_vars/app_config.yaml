@@ -1,0 +1,43 @@
+---
+rancher_local_pv:
+  app_name: rancher_local_pv      
+  name: local-path-provisioner
+  path: rancher-local-pv
+  namespace: localpv
+  image:
+    repository: rancher/local-path-provisioner
+    tag: v0.0.31
+    pullPolicy: IfNotPresent
+    enabled: true
+  rancher_resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  class: rancher-dynamic-local-path
+  rbac:
+    enabled: true
+  nodePathMap:
+    - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+      paths:
+        - /var/lib/docker/dynamic-local-path-mounts/
+  helper:
+    image:      
+      repository: busybox
+      tag: 1.37.0
+      pullPolicy: IfNotPresent
+      enabled: true
+  helper_resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+external_registry:
+  username: automation
+  password: automation
+

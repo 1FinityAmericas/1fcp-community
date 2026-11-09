@@ -1,0 +1,2 @@
+- name: Deploying rancher_local_pv storage class
+  import_tasks: deploy_rancher_local_pv.yaml

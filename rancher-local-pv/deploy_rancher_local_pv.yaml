@@ -1,0 +1,5 @@
+---
+#
+- hosts: primary_master_node_group
+  roles:
+    - deploy_rancher_local_pv

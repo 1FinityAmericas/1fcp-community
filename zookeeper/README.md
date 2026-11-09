@@ -13,7 +13,20 @@ Ansible-based deployment of Apache ZooKeeper on Kubernetes (RKE2) using Helm. Zo
 
 ## Prerequisites
 
-### 1. Configure `dep_hosts`
+
+### Install prerequisites on nodes
+
+Note: Skip the pre-requisite-installer.sh script if RKE2 was installed using 1fcp-community.
+
+```bash
+source scripts/pre-req-installer.sh master        # master node pre-requisites
+source scripts/pre-req-installer.sh worker        # worker node pre-requisites
+source scripts/pre-req-installer.sh master ntp    # master + NTP
+source scripts/pre-req-installer.sh worker ntp    # worker + NTP
+```
+
+
+### 2. Configure `dep_hosts`
 
 Open and edit the inventory file:
 
@@ -37,6 +50,9 @@ Review and edit `roles/app_config/host_vars/app_config.yaml` before deploying. K
 | `storageClassName` | Storage class for persistent volumes   | `rancher-dynamic-local-path` |
 
 ---
+
+Note: Below Ansible commands must be run from one of the master nodes in the cluster.
+
 
 ## Deployment
 

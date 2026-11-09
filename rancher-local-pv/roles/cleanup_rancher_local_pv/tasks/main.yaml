@@ -1,0 +1,2 @@
+- name: Clean-up rancher_local_pv
+  import_tasks: cleanup_rancher_local_pv.yaml

@@ -4,6 +4,7 @@ Ansible-based deployment of a MongoDB Replica Set on Kubernetes (RKE2) using the
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [TLS Certificate Configuration](#tls-certificate-configuration)
 - [Configuration](#configuration)
 - [Service Naming](#service-naming)
@@ -12,6 +13,19 @@ Ansible-based deployment of a MongoDB Replica Set on Kubernetes (RKE2) using the
 
 ---
 
+## Prerequisites
+
+### Install prerequisites on nodes
+
+Note: Skip the pre-requisite-installer.sh script if RKE2 was installed using 1fcp-community.
+
+```bash
+source scripts/pre-req-installer.sh master        # master node pre-requisites
+source scripts/pre-req-installer.sh worker        # worker node pre-requisites
+source scripts/pre-req-installer.sh master ntp    # master + NTP
+source scripts/pre-req-installer.sh worker ntp    # worker + NTP
+```
+---
 
 ## TLS Certificate Configuration
 
@@ -218,7 +232,11 @@ Applications connecting to MongoDB must use Percona's default service naming con
 
 ---
 
+Note: Below Ansible commands must be run from one of the master nodes in the cluster.
+
+
 ## Deployment
+
 
 ```bash
 touch logs/ansible_mongodb_rs.log

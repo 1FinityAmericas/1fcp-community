@@ -1,0 +1,49 @@
+---
+#
+#-----------------#rancher_local_pv_cleanup#-------------------------------
+
+- name: Helm delete rancher-local-provisioner
+  shell: "helm delete {{ rancher_local_pv.name }} -n {{ rancher_local_pv.namespace }}"
+  ignore_errors: yes
+
+- name: deleting resources under rancher-local-provisioner
+  shell: "kubectl delete all --all -n {{ rancher_local_pv.namespace }} --force --grace-period=0"
+  ignore_errors: true
+
+- name: deleting pod resources under rancher-local-provisioner
+  shell: "kubectl delete po --all -n {{ rancher_local_pv.namespace }} --force --grace-period=0"
+  ignore_errors: true
+ 
+- name: Delete ConfigMap created by release
+  shell: kubectl delete configmap -n {{ rancher_local_pv.namespace }} -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete ServiceAccount created by release
+  shell: kubectl delete serviceaccount -n {{ rancher_local_pv.namespace }} -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete Role created by release
+  shell: kubectl delete role -n {{ rancher_local_pv.namespace }} -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete RoleBinding created by release
+  shell: kubectl delete rolebinding -n {{ rancher_local_pv.namespace }} -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete ClusterRole created by release
+  shell: kubectl delete clusterrole -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete ClusterRoleBinding created by release
+  shell: kubectl delete clusterrolebinding -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete Deployment created by release
+  shell: kubectl delete deployment -n {{ rancher_local_pv.namespace }} -l app.kubernetes.io/instance={{ rancher_local_pv.name }} --force --grace-period=0
+  ignore_errors: true
+ 
+- name: Delete StorageClass created by release
+  shell: kubectl get sc -l app.kubernetes.io/instance={{ rancher_local_pv.name }} -o name | xargs -r kubectl delete --force --grace-period=0
+  ignore_errors: true
+
+ 

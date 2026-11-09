@@ -1,0 +1,4 @@
+[submodule "ci/pipeline"]
+	path = ci/pipeline
+	url = ssh://git@bitbucket.fnc.fujitsu.com:7999/fcp/fcp-pipeline.git
+	branch = dev/fcp1.0

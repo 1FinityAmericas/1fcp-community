@@ -13,7 +13,19 @@ Ansible-based deployment of Apache Kafka on Kubernetes (RKE2) using Helm. Kafka 
 
 ## Prerequisites
 
-### 1. ZooKeeper must be running
+
+### 1.Install prerequisites on nodes
+
+Note: Skip the pre-requisite-installer.sh script if RKE2 was installed using 1fcp-community.
+
+```bash
+source scripts/pre-req-installer.sh master        # master node pre-requisites
+source scripts/pre-req-installer.sh worker        # worker node pre-requisites
+source scripts/pre-req-installer.sh master ntp    # master + NTP
+source scripts/pre-req-installer.sh worker ntp    # worker + NTP
+```
+
+### 2. ZooKeeper must be running
 
 Kafka requires ZooKeeper to be deployed and healthy before installation. Verify ZooKeeper is ready:
 
@@ -48,6 +60,9 @@ Review and edit `roles/app_config/host_vars/app_config.yaml` before deploying. K
 Also update the `dep_hosts` inventory file with the correct node IPs, hostnames, and SSH credentials.
 
 ---
+
+Note: Below Ansible commands must be run from one of the master nodes in the cluster.
+
 
 ## Deployment
 

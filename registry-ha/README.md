@@ -16,6 +16,18 @@ Ansible-based deployment of a High Availability Docker Registry on Kubernetes (R
 1. An RKE2 cluster must be running with a configured `dep_hosts` inventory file.
 2. Ensure node IPs, hostnames, and SSH credentials are set correctly in `dep_hosts`.
 
+
+### Install prerequisites on nodes
+
+Note: Skip the pre-requisite-installer.sh script if RKE2 was installed using 1fcp-community.
+
+```bash
+source scripts/pre-req-installer.sh master        # master node pre-requisites
+source scripts/pre-req-installer.sh worker        # worker node pre-requisites
+source scripts/pre-req-installer.sh master ntp    # master + NTP
+source scripts/pre-req-installer.sh worker ntp    # worker + NTP
+```
+
 ---
 
 ## Configuration
@@ -61,6 +73,8 @@ docker_registry:
 ## Deployment
 
 > **Important:** Always run the cleanup playbook before deploying to ensure a clean state.
+> **Note:** Below Ansible commands must be run from one of the master nodes in the cluster.
+
 
 ### Step 1 – Cleanup existing registry
 
