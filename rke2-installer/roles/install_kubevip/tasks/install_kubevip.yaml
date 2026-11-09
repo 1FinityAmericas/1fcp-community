@@ -31,7 +31,7 @@
   become: yes
   shell: |
      /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io image import  "{{ ansible_env.HOME }}/cic-images/{{vip_obj.name}}-{{vip_obj.tag}}.tar"
-     /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io image tag  {{vip_obj.repo}}/{{vip_obj.name}}:{{vip_obj.tag}}  {{docker_repo}}/{{release_tag}}/{{vip_obj.name}}:{{vip_obj.tag}}
+     /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock -n k8s.io image tag  {{vip_obj.repo}}/{{vip_obj.name}}:{{vip_obj.tag}}  {{docker_repo}}/plndr/{{vip_obj.name}}:{{vip_obj.tag}}
       /usr/sbin/modprobe -a ip_vs ip_vs_rr
   delegate_to: "{{ item }}"
   with_items: "{{ groups ['kubemasters'] }}"
@@ -39,7 +39,7 @@
   ignore_errors: true
 
 - name: helm install or upgrade kube-vip
-  shell: "helm upgrade --install {{vip_obj.name}} -n {{ vip_obj.project }} -f values.yaml . --set image.repository={{ docker_repo }}/{{ release_tag }}/{{vip_obj.name}} --set image.tag={{ vip_obj.tag }} --set config.address={{ ha_rke2_vip_address }} --set env.vip_interface={{ ha_rke2_interface }} --create-namespace"
+  shell: "helm upgrade --install {{vip_obj.name}} -n {{ vip_obj.project }} -f values.yaml . --set image.repository={{ docker_repo }}/plndr/{{vip_obj.name}} --set image.tag={{ vip_obj.tag }} --set config.address={{ ha_rke2_vip_address }} --set env.vip_interface={{ ha_rke2_interface }} --create-namespace"
   args:
     chdir: "{{ playbook_dir }}/apps/kube-vip/charts/"
   register: status 

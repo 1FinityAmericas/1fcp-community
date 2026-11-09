@@ -1,4 +1,4 @@
 mirrors:
   docker.io:
     endpoint:
-      - https://fnc-docker-reg:3000
+      - https://docker.io

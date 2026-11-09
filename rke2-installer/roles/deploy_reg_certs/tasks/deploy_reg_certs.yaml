@@ -26,7 +26,7 @@
     regexp: "{{ item.regexp }}"
     replace: "{{ item.replace }}"
   loop:
-    - regexp: 'fnc-docker-reg:3000'
+    - regexp: 'docker.reg'
       replace: '{{ext_doc_reg_dns}}'
 
 - name: '[TLS-Generation] Generate rootCA-loc-reg.key & rootCA-loc-reg.crt if not exists'

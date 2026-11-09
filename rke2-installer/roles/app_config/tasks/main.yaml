@@ -19,7 +19,7 @@
   set_fact:
     ssh_failed: false
 
-- name: Updated docker_repo to local fnc if any of the fnc-registry deployment is set true
+- name: Updated docker_repo to local if any of the registry deployment is set true
   set_fact:
     docker_repo: "{{ ext_doc_reg_dns }}"
 

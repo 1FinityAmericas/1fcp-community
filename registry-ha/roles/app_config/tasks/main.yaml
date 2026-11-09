@@ -67,7 +67,7 @@
 - name: Prepare image dictionary for docker registry
   set_fact:
     docker_repo: "{{ ext_doc_reg_dns }}"
-    registry: "{{ ext_doc_reg_dns }}/{{ release_tag }}"
+    registry: "{{ ext_doc_reg_dns }}"
 
 - name: Register ansible user id
   shell: "id -u {{ ansible_user }}"

@@ -1,10 +1,10 @@
 ---
-- name: cleanup of fnc registry from /etc/hosts
+- name: cleanup of local registry from /etc/hosts
   become: yes
-  shell: 'sed -i "/fnc-docker-reg\$/d" /etc/hosts'
+  shell: 'sed -i "/docker.reg\$/d" /etc/hosts'
   ignore_errors: yes
 
-- name: adding custom registry DNS fnc-docker-reg to /etc/hosts file
+- name: adding custom registry DNS docker-reg to /etc/hosts file
   become: yes
   lineinfile:
     path: /etc/hosts

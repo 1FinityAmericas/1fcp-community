@@ -71,6 +71,15 @@ sudo systemctl enable --now iscsid
 
 ---
 
+### Download Required Artifacts
+
+After installing prerequisites, download the required Helm, kube-vip, Azure CLI, and RKE2 artifacts:
+
+```bash
+sh scripts/get_rke2_artifacts.sh
+```
+
+---
 ## Configure dep_hosts
 
 Edit the `dep_hosts` inventory file before running any playbooks.

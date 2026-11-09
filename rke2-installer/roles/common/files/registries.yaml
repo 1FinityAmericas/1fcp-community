@@ -1,9 +1,9 @@
 mirrors:
   docker.io:
     endpoint:
-      - https://fnc-docker-reg:3000
+      - https://docker.reg
 configs:
-  "fnc-docker-reg:3000":
+  "docker.reg":
     tls:
       cert_file: /etc/rancher/rke2/svr-domain.crt   # path to the cert file used to authenticate to the registry
       key_file: /etc/rancher/rke2/svr-domain.key  # path to the key file for the certificate used to authenticate to the registry

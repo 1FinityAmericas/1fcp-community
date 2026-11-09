@@ -144,10 +144,10 @@ metadata:
 spec:
   tls:
   - hosts:
-     - nexus.fnc.reg
+     - docker.reg
     secretName: loc-reg-secret
   rules:
-  - host: nexus.fnc.reg
+  - host: docker.reg
     http:
       paths:
       - path: /
