@@ -55,9 +55,9 @@
          --set minio.replicaCount={{ cp_ready_status.stdout_lines | length }} \
          --set ingress.host={{ ext_doc_reg_dns }} \
          --set minio.basePath={{ docker_registry.minio.image.basePath }} \
-         --set registry.image.repository={{ registry }}/registry \
+         --set registry.image.repository={{ docker_registry.registry.image.repo }} \
          --set registry.image.tag={{ docker_registry.registry.image.tag }} \
-         --set minio.image.repository={{ registry }}/minio \
+         --set minio.image.repository={{ docker_registry.minio.image.repo }} \
          --set minio.image.tag={{ docker_registry.minio.image.tag }} \
          --set namespace={{ docker_registry.namespace }} \
          --set securityContext.runAsUser={{ docker_registry.securityContext.runAsUser }} \
@@ -81,15 +81,6 @@
   retries: 30
   delay: 10
   changed_when: false
-
-- name: Push the registry images inside registry (itself) for supplementing image pulls on other nodes during recovery use-cases
-  become: yes
-  command: >
-    {{ ctr_cmd }} -n k8s.io image push {{ item }}
-  loop:
-    - "{{ registry }}/minio:{{ docker_registry.minio.image.tag }}"
-    - "{{ registry }}/registry:{{ docker_registry.registry.image.tag }}"
-  ignore_errors: true
 
 - name: Remove all tar files from master nodes
   become: yes

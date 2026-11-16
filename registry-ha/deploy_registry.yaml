@@ -19,23 +19,6 @@
           }}
       run_once: true
       
-    - name: Import images into containerd on master(s)
-      become: yes
-      shell: |
-        for img in {{ master_home.stdout }}/*{registry,minio}*.tar; do
-          [ -e "$img" ] || continue
-          {{ ctr_cmd }} images import "$img"
-        done
-      args:
-        executable: /bin/bash
-      
-    - name: Retag images on master(s)  to 1FCP version {{ release_tag }}
-      become: yes
-      command: >
-        {{ ctr_cmd }} image tag
-        {{ item.value.image.repo }}:{{ item.value.image.tag }}
-        {{ registry }}/{{ item.key }}:{{ item.value.image.tag }}
-      loop: "{{ image_entries }}"
 
     - name: Create the minio PV base path on  master(s)    
       become: yes
