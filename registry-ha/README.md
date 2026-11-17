@@ -34,6 +34,13 @@ source scripts/pre-req-installer.sh worker ntp    # worker + NTP
 
 Review and edit `roles/app_config/host_vars/app_config.yaml` before deploying:
 
+NOTE: The upstream MinIO image quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z is no longer open source. As a workaround, use the alternative image:
+ 
+  minio:
+    image:
+      repo: docker.io/1finitycom/minio
+      tag: RELEASE.2025-09-07T16-13-09Z
+
 ```yaml
 docker_registry:
   namespace: registry

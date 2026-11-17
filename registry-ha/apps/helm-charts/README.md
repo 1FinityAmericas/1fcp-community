@@ -72,6 +72,11 @@ Helm chart for deploying a High Availability Docker Registry on Kubernetes as pa
 
 ### MinIO
 
+NOTE : The upstream MinIO image quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z is no longer open source. As a workaround, use the alternative image as below 
+
+| `minio.image.repository` | MinIO image | `docker.io/1finitycom/minio` |
+
+
 | Parameter | Description | Default |
 |---|---|---|
 | `minio.replicaCount` | Number of MinIO replicas | `3` |
