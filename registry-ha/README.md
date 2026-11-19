@@ -1,3 +1,5 @@
+Note: Registry-HA is a beta release which uses minio to achieve High Availability. As minio-team has deprecated the opensource format. It is advised to use alernate repository - registry (the standalone non-HA version which doesn't need minio).
+
 # Registry HA
 
 Ansible-based deployment of a High Availability Docker Registry on Kubernetes (RKE2) using Helm. The registry (`3.0.0`) is backed by MinIO object storage (`RELEASE.2025-09-07T16-13-09Z`) for distributed blob storage.
