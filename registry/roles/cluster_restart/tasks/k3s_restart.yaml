@@ -1,0 +1,13 @@
+---
+- name: Restart K3s server on masters
+  systemd:
+    name: k3s.service
+    state: restarted
+  when: "'primary_master_node_group' in group_names"
+
+- name: Restart K3s agent on workers
+  systemd:
+    name: k3s-agent.service
+    state: restarted
+  when: "'kubeworkers' in group_names"
+

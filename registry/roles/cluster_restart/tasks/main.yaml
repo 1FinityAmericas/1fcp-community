@@ -1,0 +1,30 @@
+---
+- name: Print cluster type
+  debug:
+    msg: "Cluster restart requested for type: {{ cluster_type }}"
+
+- name: Include RKE2 restart tasks
+  include_tasks: rke2_restart.yaml
+  when: cluster_type == "rke2"
+
+- name: Include K3s restart tasks
+  include_tasks: k3s_restart.yaml
+  when: cluster_type == "k3s"
+
+- name: Include K8s (kubeadm) restart tasks
+  include_tasks: k8s_restart.yaml
+  when: cluster_type == "k8s"
+
+- name: Managed Kubernetes (EKS)
+  include_tasks: eks_restart.yaml
+  when: cluster_type == "eks"
+
+- name: Managed Kubernetes (AKS)
+  include_tasks: aks_restart.yaml
+  when: cluster_type == "aks"
+
+- name: Managed Kubernetes (GKE)
+  include_tasks: gke_restart.yaml
+  when: cluster_type == "gke"
+
+

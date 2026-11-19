@@ -1,0 +1,66 @@
+---
+  #cleanup of local docker registry
+- name: Scaling down local docker registry.
+  shell: |
+    kubectl scale 'deployment.apps/{{ docker_registry.namespace }}' -n '{{ docker_registry.namespace }}' --replicas=0
+  ignore_errors: true
+
+- name: Remove local docker registry secrets .
+  shell: |
+    kubectl -n '{{ docker_registry.namespace }}' delete secret loc-reg-secret 
+  ignore_errors: true
+  #  when: "'rke2-remove' in ansible_run_tags or 'rke2-uninstall' in ansible_run_tags"
+
+- name: Wait for pod to be deleted...
+  command: "kubectl get pods -n '{{ docker_registry.namespace }}' --selector=app='{{ docker_registry.namespace }}' -o jsonpath='{.items[*].status.phase}'"
+  register: pod_status
+  retries: 10
+  delay: 5
+  until: pod_status.stdout == ""
+  ignore_errors: true
+
+- debug:
+    var: pod_status
+
+- name: Removing local docker registry components from the control plane
+  shell: |
+    kubectl -n '{{ docker_registry.namespace }}' delete -f "{{ playbook_dir }}/apps/local_registry/local-reg.yaml"
+  ignore_errors: true
+
+- name: 'Remove rootCA-loc-reg.crt & update-ca-trust  on all nodes'
+  become: yes
+  shell: |
+    if [ -d "/etc/pki/ca-trust/source/anchors/" ]
+    then
+        rm -f /etc/pki/ca-trust/source/anchors/rootCA-loc-reg.crt
+        rm -f /etc/rancher/rke2/registries.yaml
+        rm -f /etc/rancher/rke2/*loc-reg*
+        update-ca-trust extract
+        echo "RHEL/CentOS detected & updated trust!"
+    fi
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubenodes'] }}"
+  ignore_errors: false
+  register: results
+  when: 
+    -  rotate_cert | default(true) | bool
+
+
+- name: Remove the mount point.
+  become: yes
+  file:
+    path: "{{ docker_registry.reg_path }}/loc-reg"
+    state: absent
+  ignore_errors: true
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubemasters'] }}"
+  when:
+    - rotate_cert | default(true) | bool
+
+
+- name: cleanup of docker local registry entry from /etc/hosts
+  become: yes
+  shell: 'sed -i "/{{docker_repo}}\$/d" /etc/hosts'
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups ['kubenodes'] }}"
+  ignore_errors: yes

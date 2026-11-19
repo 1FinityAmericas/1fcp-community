@@ -1,0 +1,23 @@
+---
+#
+deployment:
+  env: linux
+
+
+reg_ca_cert_exists: false
+docker_registry:
+  namespace: registry
+  registry:
+    image:      
+      repo: docker.io/library/registry
+      tag: 3.0.0
+      enabled: true
+  reg_path: /var/lib/docker/dynamic-local-path-mounts/
+  path: registry
+  resources:
+    requests:
+      cpu: "0.5"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"

@@ -1,0 +1,38 @@
+---
+- hosts: localhost
+  any_errors_fatal: true
+  gather_facts: false
+
+  tasks:
+    - debug:
+        msg:
+          - Please execute the deployment script with one of the following options:
+          -   -t deploy-registry           : Deploy  SA-local-docker-registry
+          -   -t cleanup-registry          : Cleanup SA-local-docker-registry
+
+      tags: help
+      run_once: true
+
+
+- import_playbook: app_config.yaml
+  tags: [never, deploy-reg-certs, deploy-registry, cleanup-registry, cluster-restart]
+
+- import_playbook: check_reg_ca_cert_exists.yaml
+  tags: [never, deploy-registry]
+
+- import_playbook: deploy_reg_certs.yaml
+  tags: [never, deploy-reg-certs, deploy-registry]
+  when: reg_ca_cert_exists | bool == false
+  
+- import_playbook: cluster_restart.yaml
+  tags: [never, deploy-reg-certs, deploy-registry, cluster-restart]
+  when:
+    - rotate_cert | default(true) | bool
+    - reg_ca_cert_exists | bool == false
+
+- import_playbook: deploy_registry.yaml
+  tags: [never, deploy-registry]
+
+- import_playbook: cleanup_registry.yaml
+  tags: [never, cleanup-registry]
+

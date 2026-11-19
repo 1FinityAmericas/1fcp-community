@@ -1,0 +1,4 @@
+# file: roles/cleanup_registry/tasks/main.yaml
+#
+- name: cleanup local docker registry
+  import_tasks: cleanup_registry.yaml

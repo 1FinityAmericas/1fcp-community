@@ -1,0 +1,14 @@
+---
+# Play for deploying master based registry
+- hosts: kubemasters
+  tasks:
+    - name: Detect home directory on a master node
+      command: echo $HOME
+      register: master_home
+
+- hosts: primary_master_node_group
+  environment:
+    PATH: /var/lib/rancher/rke2/bin/:{{ ansible_env.PATH }}
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  roles:
+    - deploy_registry

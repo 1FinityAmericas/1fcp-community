@@ -1,0 +1,16 @@
+---
+# Restart service
+- name: Restarting {{ rke2_service_name }}
+  systemd:
+    name: "{{ rke2_service_name }}"
+    state: restarted
+
+#Wait for service to become active
+- name: Wait for {{ rke2_service_name }} to  'running' state
+  service:
+    name: "{{ rke2_service_name }}"
+    state: started
+  register: svc
+  until: svc.status.SubState == "running"  
+  retries: 30
+  delay: 10

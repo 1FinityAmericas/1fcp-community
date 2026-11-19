@@ -1,0 +1,85 @@
+---
+- name: Detect home directory on a master node
+  command: echo $HOME
+  register: master_home
+  delegate_to: "{{ groups['kubemasters'][0] }}"
+  run_once: true
+
+
+- name: copy original manifest local-reg.yaml to prepare for DNS update"
+  copy:
+    src: '{{ playbook_dir }}/apps/local_registry/local-reg.yaml'
+    dest: '{{ playbook_dir }}/apps/local_registry/DNS-updated-local-reg.yaml'
+
+- name: replace registry DNS with inventory DNS "{{ext_doc_reg_dns}}"
+  replace:
+    path: '{{ playbook_dir }}/apps/local_registry/DNS-updated-local-reg.yaml'
+    regexp: nexus.fnc.reg
+    replace: "{{ext_doc_reg_dns}}"
+
+
+- name: Replace container resources block correctly
+  replace:
+    path: '{{ playbook_dir }}/apps/local_registry/DNS-updated-local-reg.yaml'
+    regexp: '^(\s+)resources:\n(\s+requests:\n\s+cpu:.*\n\s+memory:.*\n\s+limits:\n\s+cpu:.*\n\s+memory:.*)'
+    replace: |
+      \1resources:
+      \1  requests:
+      \1    cpu: {{ docker_registry.resources.requests.cpu }}
+      \1    memory: {{ docker_registry.resources.requests.memory }}
+      \1  limits:
+      \1    cpu: {{ docker_registry.resources.limits.cpu }}
+      \1    memory: {{ docker_registry.resources.limits.memory }}
+
+
+- name: creating registry namespace
+  shell: kubectl create ns '{{docker_registry.namespace}}'
+  ignore_errors: yes
+
+- name: creating registry secret
+  shell: "kubectl -n {{ docker_registry.namespace }} create secret tls loc-reg-secret --cert={{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.crt --key={{ docker_registry.reg_path }}/loc-reg/certs/loc-reg.key"
+  ignore_errors: yes
+
+- name: Wait until atleast one ingress-pod is 'Ready'
+  shell: kubectl get pods -n kube-system -l app.kubernetes.io/component=controller --no-headers |awk '{print $2,$3}'
+  register: ing_pod
+  until: (ing_pod.stdout_lines | select('contains', '1/1 Running') | list | length > 0 )
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Wait until 'master' is 'Ready' for slow clusters, before deploying docker registry
+  shell: >
+    kubectl get nodes -l node-role.kubernetes.io/control-plane --no-headers |
+    awk '{split($2, a, "," ); print a[1]}' | sort | uniq
+
+  register: master_status
+  until: master_status.stdout_lines | difference(['Ready']) | length == 0
+  retries: 30
+  delay: 10
+
+- name: deploying the docker registry
+  shell: kubectl -n {{docker_registry.namespace}} apply -f '{{ playbook_dir }}'/apps/local_registry/DNS-updated-local-reg.yaml
+
+- name: waiting for docker registry pod to move to 'ready' state upto 10 minutes timeout
+  shell: "kubectl get pods -n {{docker_registry.namespace}} --no-headers  | awk '{ print $2, $3}' "
+  register: registry_pod
+  until: (registry_pod.stdout_lines|length > 0 )  and  (registry_pod.stdout | regex_findall('1/1 Running'))
+  retries: 60
+  delay: 10
+  ignore_errors: no
+ 
+- name: Check registry status
+  shell: 'curl -k --connect-timeout 5 --max-time 15 https://{{ext_doc_reg_dns}}/v2/_catalog  -s -o /dev/null  -w "%{http_code}"'
+  register: status_code
+  failed_when: status_code.rc != 0 or status_code.stdout != "200"
+  until: status_code.stdout == "200"
+  retries: 30
+  delay: 10
+  changed_when: false
+ 
+- name: Stop ansible play if registry API doesnt return 200 status code
+  fail:
+    msg: "Registry API is not fully ready yet with status_code: {{ status_code.stdout }}, Please check disk usage or enable fio tools to verify iops and laytency on vms"
+  when:
+  - status_code.stdout != "200"  
