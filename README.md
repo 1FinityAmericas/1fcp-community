@@ -12,7 +12,7 @@ A collection of Ansible-based Kubernetes deployment packages for the **1Finity C
 | [kafka](kafka/) | Apache Kafka StatefulSet (requires ZooKeeper) | `7.9.2` |
 | [cassandra](cassandra/) | Apache Cassandra StatefulSet | `4.1.5` |
 | [mongodb-rs](mongodb-rs/) | MongoDB Replica Set via Percona Server for MongoDB Operator | MongoDB `7.0.31`, Operator `1.22.0` |
-| [apache-nifi](apache-nifi/) | Apache NiFi cluster with TLS ingress and Gateway API support | `2.9.0-debian13` |
+| [apache-nifi](apache-nifi/) | Apache NiFi cluster with TLS ingress and Gateway API support | `2.9.0` |
 
 ---
 
@@ -20,10 +20,9 @@ A collection of Ansible-based Kubernetes deployment packages for the **1Finity C
 
 All projects follow the same general workflow:
 
-1. **Download images** – Run `scripts/get_dependencies.sh <version>` to pull image tarballs.
-2. **Configure inventory** – Edit `dep_hosts` with your node IPs, hostnames, and SSH credentials.
-3. **Configure application** – Edit `roles/app_config/host_vars/app_config.yaml` for app-specific settings.
-4. **Deploy** – Run the Ansible playbook with the appropriate tag.
+1. **Configure inventory** – Edit `dep_hosts` with your node IPs, hostnames, and SSH credentials.
+2. **Configure application** – Edit `roles/app_config/host_vars/app_config.yaml` for app-specific settings.
+3. **Deploy** – Run the Ansible playbook with the appropriate tag.
 
 See each project's `README.md` for detailed instructions.
 
