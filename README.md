@@ -7,7 +7,7 @@ A collection of Ansible-based Kubernetes deployment packages for the **1Finity C
 | Project | Description | Image Version |
 |---------|-------------|---------------|
 | [rke2-installer](rke2-installer/) | RKE2 Kubernetes cluster installer with kube-vip, local registry, and HA support | RKE2 v1.x |
-| [registry-ha](registry-ha/) | High Availability Docker Registry backed by MinIO | Registry `3.0.0`, MinIO `2025-09-07` |
+| [registry](registry/) | Standalone Docker Registry | Registry `3.0.0` |
 | [zookeeper](zookeeper/) | Apache ZooKeeper StatefulSet (required by Kafka) | `7.9.2` |
 | [kafka](kafka/) | Apache Kafka StatefulSet (requires ZooKeeper) | `7.9.2` |
 | [cassandra](cassandra/) | Apache Cassandra StatefulSet | `4.1.5` |
@@ -34,13 +34,13 @@ See each project's `README.md` for detailed instructions.
 For a full stack deployment, follow this recommended order:
 
 ```
-rke2-installer  →  registry-ha  →  zookeeper  →  kafka
+rke2-installer  →  registry  →  zookeeper  →  kafka
                                               →  cassandra
                                               →  mongodb-rs
                                               →  apache-nifi
 ```
 
-> `kafka` depends on `zookeeper`. All application deployments require `rke2-installer` and optionally `registry-ha` for image hosting.
+> `kafka` depends on `zookeeper`. All application deployments require `rke2-installer` and optionally `registry` for image hosting.
 
 ---
 
